@@ -22,7 +22,7 @@
 ;; THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
 ;; AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
 ;; IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
-;; ARE DISCLEXTD. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+;; ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
 ;; LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
 ;; CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
 ;; SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
@@ -479,7 +479,10 @@
              (list? types)
              (= (length types) 1)
              (list? (car types)))
-        (set! types (car types)))        
+        (set! types (car types)))
+    (if (and (not (null? types))
+             (symbol? (car types)))
+        (set! types (list types)))
     ;; (println 'types: types)
     ;; (println 'ast: ast)
     (print-with-colors 'black 'red #t (print "Could not resolve types!"))
@@ -490,7 +493,8 @@
     (print-with-colors 'default 'default #t (print "\n"))
     (for-each (lambda (t)
                 ;; (println 't t (impc:ir:type? (cdr t)))
-                (if (or (and (not (null? (cdr t)))
+                (if (or (atom? t)
+                        (and (not (null? (cdr t)))
                              (not (atom? (cdr t)))
                              (member (cadr t) '(213)))
                         (and (not (null? (cdr t)))
@@ -508,7 +512,9 @@
                            (expr1 (if (null? ast) '()
                                       (flatten (impc:compiler:print-could-not-resolve-types_find-expr (car t) ast))))
                            (expr2 (cl:remove #f expr1))
-                           (expr (if (null? expr2) '() (vector-ref (car expr2) 0))))
+                           (expr1a (if (null? expr2) '() (vector-ref (car expr2) 0)))
+                           (all-expr (cl:every (lambda (x) (symbol? x)) expr1a))
+                           (expr (if all-expr (car expr1a) expr1a)))
                       ;; (println tsr ': expr)
                       ;; (println 'tsr tsr (car t))
                       (if (null? tsr)
@@ -3814,7 +3820,19 @@ Continue executing `body' forms until `test-expression' returns #f"
                                                            "##" ;"$$$"
                                                            (number->string *unique-polynum*)))
                             (impc:ti:first-transform (cdr ast) inbody?)))
-                     ((and
+                     ((and ;; exact poly match (with type)
+                       (symbol? (car ast))
+                       (regex:match? (symbol->string (car ast)) ":\\[")
+                       ;;(impc:ti:polyfunc-exists? (car (regex:type-split (symbol->string (car ast)) ":"))
+                       (impc:ti:get-polyfunc-candidate (car (regex:type-split (symbol->string (car ast)) ":"))
+                                                       (impc:ir:get-type-from-pretty-str
+                                                        (cadr (regex:type-split (symbol->string (car ast)) ":")))))
+                      (let ((p (regex:type-split (symbol->string (car ast)) ":")))
+                        (cons
+                         (impc:ti:get-polyfunc-candidate (car p)
+                                                         (impc:ir:get-type-from-pretty-str (cadr p)))
+                         (impc:ti:first-transform (cdr ast) inbody?))))                   
+                     ((and ;; generic match (with type)
                        (symbol? (car ast))
                        (regex:match? (symbol->string (car ast)) ":\\[")
                        (impc:ti:genericfunc-exists? (car (regex:type-split (symbol->string (car ast)) ":"))))
@@ -3824,7 +3842,7 @@ Continue executing `body' forms until `test-expression' returns #f"
                         (cons
                          (string->symbol (impc:ir:pointer++ (string-append (car p) "_poly_" (cname-encode (cadr p))) (- ptrdepth 1)))
                          (impc:ti:first-transform (cdr ast) inbody?))))
-                     ((and
+                     ((and ;; non exact poly match with (with type)
                        (symbol? (car ast))
                        (regex:match? (symbol->string (car ast)) ":\\[")
                        (impc:ti:polyfunc-exists? (car (regex:type-split (symbol->string (car ast)) ":"))))
@@ -3881,11 +3899,11 @@ Continue executing `body' forms until `test-expression' returns #f"
                      ((eq? (car ast) 'free)
                       (list 'free (list 'bitcast (impc:ti:first-transform (cadr ast) inbody?)
                                         'i8*)))
-                     ((member (car ast) '(Vector))
+                     ((member (car ast) '(vector_ref))
                       (impc:ti:first-transform `(let ((v1 (alloc)) (v2 (vector ,@(cdr ast)))) (pset! v1 0 v2) v1) inbody?))
-                     ((member (car ast) '(Array))
+                     ((member (car ast) '(array_ref))
                       (impc:ti:first-transform `(let ((a1 (alloc)) (a2 (array ,@(cdr ast)))) (pset! a1 0 a2) a1) inbody?))
-                     ((member (car ast) '(Tuple))
+                     ((member (car ast) '(tuple_ref))
                       (impc:ti:first-transform `(let ((t1 (alloc)) (t2 (tuple ,@(cdr ast)))) (pset! t1 0 t2) t1) inbody?))
                      ((member (car ast) '(vector))
                       `(make-vector ,@(map (lambda (x) (impc:ti:first-transform x inbody?)) (cdr ast))))
@@ -7996,7 +8014,7 @@ xtlang's `let' syntax is the same as Scheme"
 
 (define impc:ti:while-check
   (lambda (ast vars kts request?)
-    (if (tree-member 'let ast)
+    (if (tree-member 'let (cadr ast))
         (impc:compiler:print-compiler-error "You cannot bind variables within a while condition check!" (cadr ast)))
     (let ((type (impc:ti:type-check (cadr ast) vars kts (list *impc:ir:i1*)))
           (body (impc:ti:type-check (caddr ast) vars kts #f)))
@@ -9825,8 +9843,8 @@ xtlang's `let' syntax is the same as Scheme"
            (arglst1 *impc:alphabetlist*) ;; '(a b c d e f g h i j k l m n o p q r s t u v w x y z))
            (arglst2 *impc:alphabetidxlist*) ;; '(0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25))
            (namestr (symbol->string name))
-           (namestrup (impc:ti:word-upcase (symbol->string name)))
-           (namestrdown (impc:ti:word-downcase (symbol->string name)))
+           ;;(namestrup (impc:ti:word-upcase (symbol->string name)))
+           ;;(namestrdown (impc:ti:word-downcase (symbol->string name)))
            (ctype (string-append "["
                                  (if generic
                                      (apply string-append namestr ":" type "*"
@@ -9864,10 +9882,13 @@ xtlang's `let' syntax is the same as Scheme"
                                   (if (and (impc:ir:tuple? a)
                                            (string? a) ;; i.e. must be a named type "%Pair*" NOT <i32,i32>* (for example)
                                            (= 1 (impc:ir:get-ptr-depth a)))
-                                      `(if (not (null? (tref x ,c)))
-                                           (tset! obj ,b (,(string->symbol
-                                                            (string-append (substring a 1 (- (string-length a) 1)) "_hcopy"))
-                                                           (tref x ,c))))
+                                      (let* ((t (substring a 1 (- (string-length a) 1)))
+                                             (fname (if (string=? namestr t)
+                                                        'hcopy
+                                                        (string->symbol (string-append "hcopy:[" t "*," t "*]*")))))
+                                        ;; (println 't: t 'name: name 'type: type)
+                                        `(if (not (null? (tref x ,c)))
+                                             (tset! obj ,b (,fname (tref x ,c)))))
                                       `(tset! obj ,b (tref x ,c))))
                                 a arglst2 (range (length a)))))
            (hfree_body (if generic #f
@@ -9876,10 +9897,12 @@ xtlang's `let' syntax is the same as Scheme"
                                   (if (and (impc:ir:tuple? a)
                                            (string? a) ;; i.e. must be a named type "%Pair*" NOT <i32,i32>* (for example)
                                            (= 1 (impc:ir:get-ptr-depth a)))
-                                      `(if (not (null? (tref x ,c)))
-                                           (,(string->symbol
-                                              (string-append (substring a 1 (- (string-length a) 1)) "_hfree"))
-                                             (tref x ,c)))))
+                                      (let* ((t (substring a 1 (- (string-length a) 1)))
+                                             (fname (if (string=? namestr t)
+                                                        'hfree
+                                                        (string->symbol (string-append "hfree:[void," t "*]*")))))
+                                        `(if (not (null? (tref x ,c)))
+                                             (,fname (tref x ,c))))))
                                 a (range (length a)))))
            (zcopy_body (if generic #f
                            (map (lambda (a b c)
@@ -9887,10 +9910,12 @@ xtlang's `let' syntax is the same as Scheme"
                                   (if (and (impc:ir:tuple? a)
                                            (string? a) ;; i.e. must be a named type "%Pair*" NOT <i32,i32>* (for example)
                                            (= 1 (impc:ir:get-ptr-depth a)))
-                                      `(if (not (null? (tref x ,c)))
-                                           (tset! obj ,b (,(string->symbol
-                                                            (string-append (substring a 1 (- (string-length a) 1)) "_zcopy"))
-                                                           (tref x ,c) fromz toz)))
+                                      (let* ((t (substring a 1 (- (string-length a) 1)))
+                                             (fname (if (string=? namestr t)
+                                                        'zcopy
+                                                        (string->symbol (string-append "zcopy:[" t "*," t "*,mzone*,mzone*]*")))))
+                                        `(if (not (null? (tref x ,c)))
+                                             (tset! obj ,b (,fname (tref x ,c) fromz toz))))
                                       (if (and (impc:ir:pointer? a)
                                                (= 1 (impc:ir:get-ptr-depth a)))
                                           `(if (llvm_ptr_in_zone fromz (cast (tref x ,c) i8*))
@@ -9927,21 +9952,20 @@ xtlang's `let' syntax is the same as Scheme"
             (interaction-environment))
       (if (and generic printer?)
           (begin
-            (eval `(bind-func ,(string->symbol (string-append "toString:[void, " namestr "*]*")) #t
+            (eval `(bind-func ,(string->symbol (string-append "toString:[String*," namestr "*]*")) #t
                      (lambda (x)
                        (if (null? x)
                            (sprintout ,(string-append "<" namestr ":null"))
                            (sprintout ,(string-append "<" namestr ":")
-                                     ,@(cdr (apply append (map (lambda (n) (list "," (list 'tref 'x n))) (range (length a)))))
-                                     ">"))
-                       void))
+                                     ,@(cdr (apply append '() (map (lambda (n) (list "," (list 'tref 'x n))) (range (length a)))))
+                                     ">"))))
                   (interaction-environment))
-            (eval `(bind-func ,(string->symbol (string-append "print:[void, " namestr "*]*")) #t
+            (eval `(bind-func ,(string->symbol (string-append "print:[void," namestr "*]*")) #t
                      (lambda (x)
                        (if (null? x)
                            (printout ,(string-append "<" namestr ":null"))
                            (printout ,(string-append "<" namestr ":")
-                                     ,@(cdr (apply append (map (lambda (n) (list "," (list 'tref 'x n))) (range (length a)))))
+                                     ,@(cdr (apply append '() (map (lambda (n) (list "," (list 'tref 'x n))) (range (length a)))))
                                      ">"))
                        void))
                   (interaction-environment))))
@@ -9949,21 +9973,22 @@ xtlang's `let' syntax is the same as Scheme"
           (begin
             (if (and (not (regex:match? namestr "_poly_")) printer?)
                 (begin
-                  (eval `(bind-func ,(string->symbol (string-append "toString:[void, " namestr "*]*")) #t
+                  (eval `(bind-func ,(string->symbol (string-append "toString:[String*," namestr "*]*")) #t
                            (lambda (,(string->symbol (string-append "x:" namestr "*")))
                              (if (null? x)
                                  (sprintout ,(string-append "<" namestr ":null>"))
                                  (sprintout ,(string-append "<" namestr ":")
-                                           ,@(cdr (apply append (map (lambda (n) (list "," (list 'tref 'x n))) (range (length a)))))
-                                           ">"))
-                             void))
-                        (interaction-environment))               
-                  (eval `(bind-func ,(string->symbol (string-append "print:[void, " namestr "*]*")) #t
+                                            ,@(cdr (apply append '() (map (lambda (n) (list "," (list 'tref 'x n)))
+                                                                          (range (length a)))))
+                                            ">"))))
+                        (interaction-environment))          
+                  (eval `(bind-func ,(string->symbol (string-append "print:[void," namestr "*]*")) #t
                            (lambda (,(string->symbol (string-append "x:" namestr "*")))
                              (if (null? x)
                                  (printout ,(string-append "<" namestr ":null>"))
                                  (printout ,(string-append "<" namestr ":")
-                                           ,@(cdr (apply append (map (lambda (n) (list "," (list 'tref 'x n))) (range (length a)))))
+                                           ,@(cdr (apply append '() (map (lambda (n) (list "," (list 'tref 'x n)))
+                                                                         (range (length a)))))
                                            ">"))
                              void))
                         (interaction-environment))))
@@ -9974,19 +9999,19 @@ xtlang's `let' syntax is the same as Scheme"
                          (free obj)
                          val)))
                   (interaction-environment))
-            (eval `(bind-func ,(string->symbol (string-append namestr "_hcopy:[" namestr "*," namestr "*]*"))
+            (eval `(bind-func ,(string->symbol (string-append "hcopy:[" namestr "*," namestr "*]*"))
                      (lambda (,(string->symbol (string-append "x:" namestr "*")))
                        (let ((obj (halloc)))
                          ,@hcopy_body
                          obj)))
                   (interaction-environment))
-            (eval `(bind-func ,(string->symbol (string-append namestr "_hfree:[void," namestr "*]*"))
+            (eval `(bind-func ,(string->symbol (string-append "hfree:[void," namestr "*]*"))
                      (lambda (,(string->symbol (string-append "x:" namestr "*")))
                        ,@hfree_body
                        (free x)
                        void))
                   (interaction-environment))
-            (eval `(bind-func ,(string->symbol (string-append namestr "_zcopy:[" namestr "*," namestr "*,%mzone*,%mzone*]*"))
+            (eval `(bind-func ,(string->symbol (string-append "zcopy:[" namestr "*," namestr "*,mzone*,mzone*]*"))
                      (lambda (,(string->symbol (string-append "x:" namestr "*")) fromz toz)
                        (let ((obj (zalloc)))
                          ,@zcopy_body
@@ -10003,6 +10028,8 @@ xtlang's `let' syntax is the same as Scheme"
   ;; (println 'bind-type args)
   (if (null? args)
       (impc:compiler:print-compiler-error "Bind type missing arguments! (symbol type [docstring])"))
+  (if (regex:match? (symbol->string (car args)) "^[a-z].*")
+      (print-with-colors 'cyan 'black #t (print "Note: by convention XTLang prefers capitalized named types\nYour reference constructor will be capitalized, your value constructor lower case.\n")))
   (let* ((symbol (car args))
          (type_1 (cadr args))
          (type (string->symbol
@@ -11251,6 +11278,32 @@ e.g.
                                             "")))
               fullname)))))
 
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;; print ir & x86 assm
+;;
+
+(define-macro (llvm:ir name . type)
+  (let ((t (if (null? type) #f (car type))))
+    `(let* ((n1 ,(if t
+                     `(impc:ti:get-mono-name ,name ,t)
+                     `(impc:ti:get-mono-name ,name)))                  
+            (n2 (llvm:get-closure-work-name n1)))
+       ;; (println 'n1 n1 'n2 n2)
+       (llvm:print-closure n2))))
+
+(define-macro (llvm:asm name . args)
+  (let* ((a1 (if (null? args) #f (car args)))
+         (a2 (if (null? args) #f (if (null? (cdr args)) #f (cadr args))))
+         (type (if (symbol? a1) a1 (if (symbol? a2) a2 #f)))
+         (assm_print_type (if (number? a1) a1 (if (number? a2) a2 #f))))
+    `(let ((n1 ,(if type
+                    `(impc:ti:get-mono-name ,name ,type)
+                    `(impc:ti:get-mono-name ,name))))
+       ,(if (not assm_print_type)
+            `(print (llvm:disassemble n1 0) "\n")
+            `(print (llvm:disassemble n1 ,assm_print_type) "\n")))))
 
 ;; to catch the dreaded heisenbug...
 

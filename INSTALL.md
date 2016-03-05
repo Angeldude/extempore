@@ -74,7 +74,7 @@ Download a
 [precompiled binary](http://extempore.moso.com.au/extras/Extempore-0.6.0-win64.zip),
 unzip it and run `extempore.exe` from inside the `extempore` folder.
 
-## Get the depenencies
+## Get the dependencies
 
 You'll need
 
@@ -111,14 +111,18 @@ sudo apt-get install software-properties-common && sudo add-apt-repository ppa:g
 
 **ALSA** (Linux only)
 
-To use the ALSA portaudio backend (which is probably what you want,
-unless you have a real reason to go with something else) you'll need
-the libasound package at build-time, e.g. (on Ubuntu)
+To use the [ALSA](http://www.alsa-project.org/) portaudio backend
+(which is probably what you want, unless you have a real reason to go
+with something else) you'll need the libasound package at build-time,
+e.g. (on Ubuntu)
 ```
 sudo apt-get install libasound2-dev
 ```
-If you really want to use a different backend (e.g. `jack`) then you
-can hack the `PA_USE_*` definitions in `CMakeLists.txt`
+
+**Jack** (Linux only)
+
+To use the [Jack](http://www.jackaudio.org/) portaudio backend, you'll need
+to have Jack installed, and then to set the `JACK` cmake option with `-DJACK=ON`
 
 **Boost** (Windows only)
 
@@ -161,7 +165,7 @@ On **Linux/OSX** CMake will generate a `Makefile` in `cmake-build`,
 with a few useful targets:
 
 - `make` will build Extempore (if you have a multicore machine, you
-  can try e.g. `make -j4` to parallellize the `make` step, especially
+  can try e.g. `make -j4` to parallelize the `make` step, especially
   since LLVM takes so long to build)
 - `make install` will install `extempore` into `/usr/local/bin`
 - `make uninstall` will remove the installed files

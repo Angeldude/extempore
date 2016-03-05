@@ -1,61 +1,78 @@
-.. Extempore documentation master file, created by
-   sphinx-quickstart on Fri Sep 11 16:05:43 2015.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
-
 The Extempore programming environment
 =====================================
 
-Welcome to Extempore's documentation site. It's a work in
-progress---up till now things have been hosted on `Ben's blog
-<http://benswift.me/extempore-docs/>`_ but this is an attempt to do
-things right, using `Sphinx <http://sphinx-doc.org/>`_.
+.. note:: This documentation is not yet ready for prime time, so
+          don't rely on it yet. See :doc:`about-this-documentation`
+          for more info.
 
-These docs are generated from the reStructured text (``.rst``) files
-in the ``docs/`` subdirectory in the Extempore source distribution. So
-if you find problems, or can think of improvements, fork away on GH,
-edit the doc source files and submit a pull request---we'd love these
-docs to become a real community effort.
+Welcome to Extempore's documentation site. It's a work in
+progress---up till now things have been hosted on `Ben's blog`_ but
+this is an attempt to do things right, using Sphinx_.
+
+.. code-block:: extempore
+
+  (bind-func dsp:DSP
+    (lambda (in time chan dat)
+      (* 0.1 (cos (* .1 (convert time))))))
+  
+  (dsp:set! dsp)
+
+.. _Ben's blog: http://benswift.me/extempore-docs/
+.. _Sphinx: http://sphinx-doc.org/
+
+.. _getting-started-docs:
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
+   :caption: Getting started
 
+   quickstart
+   editor-support
+   about-this-documentation
 
-Getting Started
----------------
+.. _extempore-environment-docs:
 
-- Quickstart guide
-- editor support
-  
-xtlang - the Extempore language
--------------------------------  
+.. toctree::
+   :maxdepth: 1
+   :caption: Extempore programming environment
 
-- type system
-- generics
-- binding to C libs
-  
-Extempore runtime
------------------
+   philosophy
+   caas
+   time
+   c-xtlang-interop
+   scheme-xtlang-interop
 
-- CaaS
-- time
-- Scheme-xtlang interop
+.. _xtlang-docs:
 
-Tutorial
---------
-  
-- Audio
-- Graphics
+.. toctree::
+   :maxdepth: 1
+   :caption: xtlang---the Extempore language
 
-Getting involved
-----------------
+   type-system
+   generics
+   memory
 
-- list of projects
+.. _tutorials:
 
-Indices and tables
-==================
+.. toctree::
+   :maxdepth: 1
+   :caption: Tutorials & Guides
+
+   audio
+   graphics
+
+.. _help-docs:
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Community
+
+   getting-help
+   contributing
+
+Other useful things
+===================
 
 * :ref:`genindex`
-* :ref:`modindex`
 * :ref:`search`
 

@@ -22,7 +22,7 @@
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" 
  * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE 
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE 
- * ARE DISCLEXTD. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE 
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE 
  * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR 
  * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF 
  * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS 
@@ -190,8 +190,8 @@ namespace extemp {
 	static pointer llvm_count(scheme* _sc, pointer args);
 	static pointer llvm_count_set(scheme* _sc, pointer args);
 	static pointer llvm_count_inc(scheme* _sc, pointer args);
+  static pointer llvm_print_all_closures(scheme* _sc, pointer args);
   static pointer llvm_print_closure(scheme* _sc, pointer args);
-  static pointer llvm_print_closure_work(scheme* _sc, pointer args);
   static pointer llvm_closure_last_name(scheme* _sc, pointer args);
   static pointer llvm_disasm(scheme* _sc, pointer args);
 	static pointer callClosure(scheme* _sc, pointer args);

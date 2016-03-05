@@ -22,7 +22,7 @@
  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" 
  * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE 
  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE 
- * ARE DISCLEXTD. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE 
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE 
  * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR 
  * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF 
  * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS 
@@ -427,9 +427,9 @@ llvm_zone_t* llvm_zone_create(uint64_t size)
     zone->size = size;
     zone->cleanup_hooks = NULL;
     zone->memories = NULL;
-#if DEBUG_ZONE_ALLOC    
+    #if DEBUG_ZONE_ALLOC    
     printf("CreateZone: %x:%x:%lld:%lld\n",zone,zone->memory,zone->offset,zone->size);
-#endif
+    #endif
     return zone;
 }
 
@@ -441,10 +441,12 @@ llvm_zone_t* llvm_zone_reset(llvm_zone_t* zone)
 
 void llvm_zone_destroy(llvm_zone_t* zone)
 {
-#if DEBUG_ZONE_ALLOC  
+  #if DEBUG_ZONE_ALLOC  
     printf("DestroyZone: %p:%p:%lld:%lld\n",zone,zone->memory,zone->offset,zone->size);
-#endif
+  #endif
     if(zone->memories != NULL) llvm_zone_destroy(zone->memories);
+    // immediate zeroing for debug purposes!
+    memset(zone->memory,0,zone->size);
     free(zone->memory);    
     free(zone);
     return;
@@ -452,7 +454,15 @@ void llvm_zone_destroy(llvm_zone_t* zone)
 
 void llvm_zone_print(llvm_zone_t* zone)
 {
-  printf("Zone(%p) Mem(%p) Offset(%lld) Size(%lld)\n",zone,zone->memory,zone->offset,zone->size);
+  llvm_zone_t* tmp = zone;
+  int64_t total_size = zone->size;
+  int64_t segments = 1;
+  while(tmp->memories != NULL) {
+    tmp = tmp->memories;
+    total_size += tmp->size;
+    segments++;
+  }
+  printf("<MemZone(%p) size(%lld) free(%lld) segs(%lld)>",zone,total_size,(zone->size - zone->offset),segments);
   return;
 }
 
@@ -496,6 +506,7 @@ void* llvm_zone_malloc(llvm_zone_t* zone, uint64_t size)
     {
 
 #if EXTENSIBLE_ZONES // if extensible_zones is true then extend zone size by zone->size
+    int old_zone_size = zone->size;
     int iszero = (zone->size == 0) ? 1 : 0;
     if(size > zone->size) zone->size = size;
     zone->size = zone->size * 2; // keep doubling zone size for each new allocation
@@ -505,9 +516,11 @@ void* llvm_zone_malloc(llvm_zone_t* zone, uint64_t size)
     if(iszero == 1) { // if initial zone is 0 - the replace don't extend
       zone->memory = tmp;
       free(newzone);
-    }else{
+    } else {
+      // printf("adding new memory %p:%lld to existing %p:%lld\n",newzone,newzone->size,zone,zone->size);
       newzone->memories = zone->memories;
       newzone->memory = zone->memory;
+      newzone->size = old_zone_size;
       zone->memory = tmp;
       zone->memories = newzone;
     }
@@ -610,7 +623,7 @@ void free_after_delay(char* dat, double delay)
 extemp::CM* DestroyMallocZoneWithDelayCM = mk_cb(extemp::SchemeFFI::I(),extemp::SchemeFFI,destroyMallocZoneWithDelay);
 void llvm_destroy_zone_after_delay(llvm_zone_t* zone, uint64_t delay)
 {
-    //printf("destroyWithDelay %p\n",zone);
+    // printf("destroyWithDelay %p\n",zone);
     extemp::CM* cb = DestroyMallocZoneWithDelayCM;
     extemp::Task<llvm_zone_t*>* task = new extemp::Task<llvm_zone_t*>(extemp::UNIV::TIME+delay,44100,cb,zone);
     extemp::TaskScheduler::I()->add(task);
