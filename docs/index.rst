@@ -1,10 +1,6 @@
 The Extempore programming environment
 =====================================
 
-.. note:: This documentation is not yet ready for prime time, so
-          don't rely on it yet. See :doc:`about-this-documentation`
-          for more info.
-
 Welcome to Extempore's documentation site. It's a work in
 progress---up till now things have been hosted on `Ben's blog`_ but
 this is an attempt to do things right, using Sphinx_.
@@ -27,6 +23,7 @@ this is an attempt to do things right, using Sphinx_.
    :caption: Getting started
 
    quickstart
+   install
    editor-support
    about-this-documentation
 
@@ -34,23 +31,25 @@ this is an attempt to do things right, using Sphinx_.
 
 .. toctree::
    :maxdepth: 1
-   :caption: Extempore programming environment
+   :caption: Key concepts
 
    philosophy
    caas
    time
    c-xtlang-interop
    scheme-xtlang-interop
+   concurrency
+   memory
 
 .. _xtlang-docs:
 
 .. toctree::
    :maxdepth: 1
-   :caption: xtlang---the Extempore language
+   :caption: xtlang
 
-   type-system
-   generics
-   memory
+   types
+   type-inference
+   best-practices
 
 .. _tutorials:
 
@@ -58,8 +57,12 @@ this is an attempt to do things right, using Sphinx_.
    :maxdepth: 1
    :caption: Tutorials & Guides
 
-   audio
+   audio-signal-processing
+   making-an-instrument
+   note-level-music
+   sampler
    graphics
+   impromptu-users
 
 .. _help-docs:
 
@@ -69,6 +72,7 @@ this is an attempt to do things right, using Sphinx_.
 
    getting-help
    contributing
+   testing
 
 Other useful things
 ===================

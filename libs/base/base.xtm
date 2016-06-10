@@ -45,9 +45,6 @@
 
 (impc:aot:insert-header "xtmbase")
 
-(sys:compile-init-ll)
-(impc:aot:insert-forms (sys:compile-init-ll))
-
 ;; (suppress-compiler-messages #f)
 
 ;;;;;;;;;;;;;
@@ -141,11 +138,11 @@
 
 ;; prints a line break
 (bind-func print_return
-  (lambda () (llvm_printf "\n") void))
+  (lambda () (putchar 10) void))
 
 ;; prints a space
 (bind-func print_space
-  (lambda () (printf " ") void))
+  (lambda () (putchar 32) void))
 
 (bind-func print
   (lambda (x:i1) (printf "%d" x) void))
@@ -172,6 +169,13 @@
 ;;;;;;;;;;;;;;;;;;;
 ;; xtlang macros ;;
 ;;;;;;;;;;;;;;;;;;;
+
+(bind-macro
+ "return size of type"
+ (size_of type)
+ (begin
+   (if (symbol? type) (set! type (symbol->string type)))
+   (impc:ir:get-type-size (impc:ir:get-type-from-pretty-str type))))
 
 (bind-macro
   "increment variable by y"
@@ -206,7 +210,7 @@
   `(/ (log ,x) (log ,base)))
 
 (bind-macro
-  "convert angle in degrees to radians" 
+  "convert angle in degrees to radians"
   (deg2rad degrees)
   `(/ ,degrees 57.2957795))
 
@@ -334,10 +338,6 @@ into any further sexp arguments."
 
 ;; many of these are handled through llvm intrinsics these days
 
-;(bind-poly cos cosf)
-;(bind-poly cos llvm_cos)
-;(bind-poly sin sinf)
-;(bind-poly sin llvm_sin)
 (bind-poly tan tanf)
 (bind-poly tan llvm_tan)
 (bind-poly cosh coshf)
@@ -346,8 +346,6 @@ into any further sexp arguments."
 (bind-poly tanh llvm_tanh)
 (bind-poly sinh sinhf)
 (bind-poly sinh llvm_sinh)
-(bind-poly acos acosf)
-(bind-poly acos llvm_acos)
 (bind-poly asin asinf)
 (bind-poly asin llvm_asin)
 (bind-poly atan atanf)
@@ -376,7 +374,7 @@ into any further sexp arguments."
 ;; (bind-poly fabs llvm_fabs)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;
-;; 
+;;
 ;; some zone helpers
 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;
@@ -385,6 +383,9 @@ into any further sexp arguments."
   (lambda (z)
     (llvm_zone_print z)
     void))
+
+;; NOTE!  push_zone and pop_zone are compiler directives!
+;; i.e. look in llvmir.xtm
 
 (bind-func Zone
   (lambda (size)
@@ -401,14 +402,6 @@ into any further sexp arguments."
 (bind-func peek_zone
   (lambda ()
     (llvm_peek_zone_stack)))
-
-(bind-func pop_zone
-  (lambda ()
-    (llvm_pop_zone_stack)))
-
-(bind-func push_zone
-  (lambda (z)
-    (llvm_push_zone_stack z)))
 
 ;;;;;;;;;;;;;;;
 ;; zone copy ;;
@@ -816,7 +809,7 @@ If both strings are null an empty String will be returned
 (bind-func format_return
   (lambda ()
     (let ((str:i8* (salloc 256)))
-      (llvm_sprintf str "\n")
+      (sprintf str "\n")
       (String str))))
 
 ;; prints a space
@@ -827,37 +820,37 @@ If both strings are null an empty String will be returned
 (bind-func format
   (lambda (x:i1)
     (let ((str:i8* (salloc 256)))
-      (llvm_sprintf str "%d" x)
+      (sprintf str "%d" x)
       (String str))))
 
 (bind-func format
   (lambda (x:i8)
     (let ((str:i8* (salloc 256)))
-      (llvm_sprintf str "%d" x)
+      (sprintf str "%d" x)
       (String str))))
 
 (bind-func format
   (lambda (x:i32)
     (let ((str:i8* (salloc 256)))
-      (llvm_sprintf str "%d" x)
+      (sprintf str "%d" x)
       (String str))))
 
 (bind-func format
   (lambda (x:i64)
     (let ((str:i8* (salloc 256)))
-      (llvm_sprintf str "%lld" x)
+      (sprintf str "%lld" x)
       (String str))))
 
 (bind-func format
   (lambda (x:float)
     (let ((str:i8* (salloc 256)))
-      (llvm_sprintf str "%f" (ftod x))
+      (sprintf str "%f" (ftod x))
       (String str))))
 
 (bind-func format
   (lambda (x:double)
     (let ((str:i8* (salloc 256)))
-      (llvm_sprintf str "%f" x)
+      (sprintf str "%f" x)
       (String str))))
 
 ;; String formatting!

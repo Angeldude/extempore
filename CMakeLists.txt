@@ -1,13 +1,21 @@
 cmake_minimum_required(VERSION 3.1) # we use target_sources()
 
-option(MCJIT "use LLVM's MCJIT for codegen" ON)
 option(BOOST "use boost library" OFF)
-option(IN_TREE "use the Extempore source dir as EXT_SHARE_DIR - useful for developers" ON)
 option(ASIO "use the ASIO Portaudio backend" OFF)
 option(JACK "use the Jack Portaudio backend" OFF)
-option(DOWNLOAD_LLVM "download and build LLVM (patched for Extempore)" ON)
 option(PACKAGE "set up install targets for packaging" OFF)
-option(EXTENDED_DEPS "download & build deps for aot_extended" OFF)
+option(BUILD_DEPS "download & build deps for aot_extended" ON)
+
+####################
+# option wrangling #
+####################
+
+# share directory
+
+# if -DEXT_SHARE_DIR=/path/to/share-dir is provided at the command
+# line it will override these values
+
+# packaging (binary distribution)
 
 if(PACKAGE)
   # this needs to be set before project() is called
@@ -15,34 +23,36 @@ if(PACKAGE)
   set(CMAKE_OSX_DEPLOYMENT_TARGET 10.9)
   message(STATUS "Building Extempore for binary distribution")
   # need deps if we're packaging
-  set(EXTENDED_DEPS ON CACHE BOOL "" FORCE)
-  if(IN_TREE)
-    set(IN_TREE OFF CACHE BOOL "use the Extempore source dir as EXT_SHARE_DIR - useful for developers" FORCE)
+  set(BUILD_DEPS ON CACHE BOOL "" FORCE)
+endif()
+
+# LLVM
+
+if(DEFINED ENV{EXT_LLVM_DIR})
+  # if there's an EXT_LLVM_DIR environment variable, use that
+  set(EXT_LLVM_DIR $ENV{EXT_LLVM_DIR})
+  set(BUILD_LLVM OFF)
+else()
+  set(EXT_LLVM_DIR ${CMAKE_SOURCE_DIR}/llvm)
+  set(BUILD_LLVM ON)
+endif()
+
+# building external shared library dependencies
+
+if(BUILD_DEPS)
+  set(EXT_DEPS_INSTALL_DIR ${CMAKE_BINARY_DIR}/deps-install)
+  set(EXT_PLATFORM_SHLIBS_DIR ${CMAKE_SOURCE_DIR}/libs/platform-shlibs)
+  if(PACKAGE)
+    set(EXT_DEPS_C_FLAGS "${CMAKE_C_FLAGS_RELEASE} -mtune=generic")
+    set(EXT_DEPS_CXX_FLAGS "${CMAKE_CXX_FLAGS_RELEASE} -mtune=generic")
+    message(STATUS "compiler flags for packaging:\nC    ${EXT_DEPS_C_FLAGS}\nCXX  ${EXT_DEPS_CXX_FLAGS}")
   endif()
 endif()
 
-project(Extempore VERSION 0.6.1)
+project(Extempore VERSION 0.7.0)
+
 if(NOT ${CMAKE_SIZEOF_VOID_P} EQUAL 8)
   message(FATAL_ERROR "Extempore currently only runs on 64-bit platforms.")
-endif()
-
-# if -DEXT_SHARE_DIR=/path/to/share-dir is provided at the command
-# line it will override these values
-
-if(WIN32)
-  # Windows doesn't really do "installation", so we'll assume that
-  # extempore.exe's always going to be run from the Extempore
-  # directory
-  set(EXT_SHARE_DIR "." CACHE PATH
-    "path to Extempore's shared runtime files")
-else()
-  if(IN_TREE)
-    set(EXT_SHARE_DIR "${CMAKE_SOURCE_DIR}" CACHE PATH
-      "path to Extempore's shared runtime files")
-  else()
-    set(EXT_SHARE_DIR "${CMAKE_INSTALL_PREFIX}/share/extempore" CACHE PATH
-      "path to Extempore's shared runtime files")
-  endif()
 endif()
 
 # Set a default build type if none was specified
@@ -54,9 +64,65 @@ if(NOT CMAKE_BUILD_TYPE)
   set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "Debug" "Release" "MinSizeRel" "RelWithDebInfo")
 endif()
 
+if(NOT LLVM_BUILD_TYPE)
+  message(STATUS "Building 'Release' LLVM configuration")
+  set(LLVM_BUILD_TYPE Release CACHE STRING "Choose the type of build." FORCE)
+endif()
+
 # # set_target_properties(extempore PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_HOME_DIRECTORY}")
 # set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_SOURCE_DIR}/extras/cmake CACHE PATH
 #   "path to Extempore's cmake modules")
+
+####################
+# platform/version #
+####################
+
+# this stuff is handy to make sure that the packages/test platforms
+# get sensible names
+
+if(UNIX)
+  find_program(UNAME_PROGRAM uname)
+  execute_process(COMMAND ${UNAME_PROGRAM} -m
+    OUTPUT_VARIABLE UNAME_MACHINE_NAME
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+  execute_process(COMMAND ${UNAME_PROGRAM} -r
+    OUTPUT_VARIABLE UNAME_OS_RELEASE
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+  execute_process(COMMAND ${UNAME_PROGRAM} -s
+    OUTPUT_VARIABLE UNAME_OS_NAME
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+endif(UNIX)
+
+if(APPLE)
+  set(EXTEMPORE_SYSTEM_NAME "osx")
+  execute_process(COMMAND sw_vers -productVersion
+    OUTPUT_VARIABLE EXTEMPORE_SYSTEM_VERSION
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+  string(REGEX MATCH "^10.[0-9]+" EXTEMPORE_SYSTEM_VERSION ${EXTEMPORE_SYSTEM_VERSION})
+  set(EXTEMPORE_SYSTEM_ARCHITECTURE ${UNAME_MACHINE_NAME})
+elseif(UNIX)
+  # try lsb_release first - better at giving the distro name
+  execute_process(COMMAND lsb_release -is
+    OUTPUT_VARIABLE EXTEMPORE_SYSTEM_NAME
+    OUTPUT_STRIP_TRAILING_WHITESPACE)
+  if(NOT EXTEMPORE_SYSTEM_NAME)
+    # otherwise use uname output
+    set(EXTEMPORE_SYSTEM_NAME ${UNAME_OS_NAME})
+  endif()
+  set(EXTEMPORE_SYSTEM_VERSION ${UNAME_OS_RELEASE})
+  set(EXTEMPORE_SYSTEM_ARCHITECTURE ${UNAME_MACHINE_NAME})
+elseif(WIN32)
+  set(EXTEMPORE_SYSTEM_NAME "Windows")
+  string(REGEX MATCH "^[0-9]+" EXTEMPORE_SYSTEM_VERSION ${CMAKE_SYSTEM_VERSION})
+  # deal with Windows version number shenanigans
+  if(${EXTEMPORE_SYSTEM_VERSION} LESS 10)
+    string(CONCAT ACTUAL_VERSION_EXPRESSION "${EXTEMPORE_SYSTEM_VERSION}" " + 1")
+    math(EXPR EXTEMPORE_SYSTEM_VERSION ${ACTUAL_VERSION_EXPRESSION})
+  endif()
+  set(EXTEMPORE_SYSTEM_ARCHITECTURE ${CMAKE_SYSTEM_PROCESSOR})
+else()
+  message(FATAL_ERROR "Sorry, Extempore isn't supported on this platform - OSX, Linux & Windows only.")
+endif()
 
 ########
 # PCRE #
@@ -221,99 +287,77 @@ if(PACKAGE)
 endif()
 
 ##############
-# LLVM 3.7.0 #
+# LLVM 3.8.0 #
 ##############
 
 # if you need to build LLVM by hand, the command will be something like
-# cmake .. -DLLVM_TARGETS_TO_BUILD=X86 -DCMAKE_BUILD_TYPE=Release -DLLVM_ENABLE_TERMINFO=OFF -DLLVM_ENABLE_ZLIB=OFF -DCMAKE_INSTALL_PREFIX=c:/Users/ben/Code/extempore/llvm-3.8.0rc2-release
+# cmake .. -DLLVM_TARGETS_TO_BUILD=X86 -DCMAKE_BUILD_TYPE=Release -DLLVM_ENABLE_TERMINFO=OFF -DLLVM_ENABLE_ZLIB=OFF -DCMAKE_INSTALL_PREFIX=c:/Users/ben/Code/extempore/llvm-3.8.0-release
 
-if(PACKAGE)
-  # when packaging, we'll build LLVM a bit differently (see the "deps
-  # for AOT-extended" section further down in this file)
-  set(EXT_LLVM_DIR ${CMAKE_BINARY_DIR}/deps-install)
-  set(DOWNLOAD_LLVM OFF)
-elseif(DEFINED ENV{EXT_LLVM_DIR})
-# if there's an environment variable, use that
-  set(EXT_LLVM_DIR $ENV{EXT_LLVM_DIR})
-  set(DOWNLOAD_LLVM OFF)
-else()
-  if(WIN32)
-    set(EXT_LLVM_DIR ${CMAKE_SOURCE_DIR}/llvm)
-  else()
-    set(EXT_LLVM_DIR ${EXT_SHARE_DIR}/llvm)
-  endif()
-endif()
-
-# assume that if we can find llvm-config, we already have a working LLVM install
-find_program(LLVM_CONFIG llvm-config
-  ${EXT_LLVM_DIR}/bin
-  NO_DEFAULT_PATH)
-
-if(LLVM_CONFIG)
-  set(DOWNLOAD_LLVM OFF)
-endif()
-
-# if we're gonna download and build LLVM, do it here
-
-if(DOWNLOAD_LLVM)
-  message(STATUS "Downloading and building LLVM (patched for Extempore)")
-
+if(BUILD_LLVM)
   include(ExternalProject)
+  find_program(PATCH_PROGRAM patch)
 
-  if(WIN32)
-    if(DEFINED PYTHON_EXECUTABLE)
-      message(STATUS "building LLVM using using python at ${PYTHON_EXECUTABLE}")
-      ExternalProject_Add(LLVM
-        PREFIX llvm
-        URL http://extempore.moso.com.au/extras/extempore-llvm-3.7.0.src.zip
-        URL_MD5 a2fb39e154f62c1731d32f0c789d8f99
-        CMAKE_ARGS
-        -DLLVM_TARGETS_TO_BUILD=X86
-        -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-        -DLLVM_ENABLE_TERMINFO=OFF
-        -DLLVM_ENABLE_ZLIB=OFF
-        -DCMAKE_INSTALL_PREFIX=${EXT_LLVM_DIR}
-        -DPYTHON_EXECUTABLE=${PYTHON_EXECUTABLE})
-    else()
-      ExternalProject_Add(LLVM
-        PREFIX llvm
-        URL http://extempore.moso.com.au/extras/extempore-llvm-3.7.0.src.zip
-        URL_MD5 a2fb39e154f62c1731d32f0c789d8f99
-        CMAKE_ARGS
-        CMAKE_ARGS
-        -DLLVM_TARGETS_TO_BUILD=X86
-        -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-        -DLLVM_ENABLE_TERMINFO=OFF
-        -DLLVM_ENABLE_ZLIB=OFF
-        -DCMAKE_INSTALL_PREFIX=${EXT_LLVM_DIR})
-    endif()
-  else()
-    find_program(PATCH_PROGRAM patch)
+  if(NOT PATCH_PROGRAM)
+    message(WARNING "Cannot find \"patch.exe\", which is required to patch LLVM")
+  endif()
 
-    if(NOT PATCH_PROGRAM)
-      message(FATAL_ERROR "Cannot find \"patch\" to patch LLVM")
-    endif()
-
+  if(PACKAGE)
     ExternalProject_Add(LLVM
       PREFIX llvm
-      URL http://www.llvm.org/releases/3.7.0/llvm-3.7.0.src.tar.xz
-      URL_MD5 b98b9495e5655a672d6cb83e1a180f8e
-      PATCH_COMMAND patch -p0 < ${CMAKE_SOURCE_DIR}/extras/extempore-llvm-3.7.0.patch
+      URL http://www.llvm.org/releases/3.8.0/llvm-3.8.0.src.tar.xz
+      URL_MD5 07a7a74f3c6bd65de4702bf941b511a0
+      PATCH_COMMAND patch -p0 < ${CMAKE_SOURCE_DIR}/extras/extempore-llvm-3.8.0.patch
       CMAKE_ARGS
+      -DCMAKE_OSX_SYSROOT=macosx
+      -DCMAKE_OSX_DEPLOYMENT_TARGET=10.9
       -DLLVM_TARGETS_TO_BUILD=X86
-      -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+      -DCMAKE_BUILD_TYPE=${LLVM_BUILD_TYPE}
       -DLLVM_ENABLE_TERMINFO=OFF
       -DLLVM_ENABLE_ZLIB=OFF
+      -DLLVM_INCLUDE_UTILS=OFF
+      -DLLVM_BUILD_RUNTIME=OFF
+      -DLLVM_INCLUDE_EXAMPLES=OFF
+      -DLLVM_INCLUDE_TESTS=OFF
+      -DLLVM_INCLUDE_GO_TESTS=OFF
+      -DLLVM_INCLUDE_DOCS=OFF
+      -DCMAKE_C_FLAGS=${EXT_DEPS_C_FLAGS}
+      -DCMAKE_CXX_FLAGS=${EXT_DEPS_CXX_FLAGS}
       -DCMAKE_INSTALL_PREFIX=${EXT_LLVM_DIR})
+  else()
+    ExternalProject_Add(LLVM
+      PREFIX llvm
+      URL http://www.llvm.org/releases/3.8.0/llvm-3.8.0.src.tar.xz
+      URL_MD5 07a7a74f3c6bd65de4702bf941b511a0
+      PATCH_COMMAND patch -p0 < ${CMAKE_SOURCE_DIR}/extras/extempore-llvm-3.8.0.patch
+      CMAKE_ARGS
+      -DLLVM_TARGETS_TO_BUILD=X86
+      -DCMAKE_BUILD_TYPE=${LLVM_BUILD_TYPE}
+      -DLLVM_ENABLE_TERMINFO=OFF
+      -DLLVM_ENABLE_ZLIB=OFF
+      -DLLVM_INCLUDE_UTILS=OFF
+      -DLLVM_BUILD_RUNTIME=OFF
+      -DLLVM_INCLUDE_EXAMPLES=OFF
+      -DLLVM_INCLUDE_TESTS=OFF
+      -DLLVM_INCLUDE_GO_TESTS=OFF
+      -DLLVM_INCLUDE_DOCS=OFF
+      -DCMAKE_INSTALL_PREFIX=${EXT_LLVM_DIR})
+  endif()
+  if(WIN32)
+    add_custom_target(LLVM_install
+      COMMENT "This is necessary to get CMake to install LLVM (needed to build Extempore) before the Extempore install step"
+      DEPENDS LLVM
+      COMMAND ${CMAKE_COMMAND} -DBUILD_TYPE=${LLVM_BUILD_TYPE} -P ${CMAKE_BINARY_DIR}/llvm/src/LLVM-build/cmake_install.cmake)
+  else()
+    ExternalProject_Add_StepTargets(LLVM install)
   endif()
 endif()
 
 # the ordering of these libs matters, especially with the gcc linker.
 # Check the output of "llvm-config --libnames" to be sure
-set(EXT_LLVM_LIBRARIES "LLVMLTO;LLVMObjCARCOpts;LLVMLinker;LLVMBitWriter;LLVMIRReader;LLVMAsmParser;LLVMOption;LLVMTableGen;LLVMX86Disassembler;LLVMX86AsmParser;LLVMX86CodeGen;LLVMSelectionDAG;LLVMAsmPrinter;LLVMX86Desc;LLVMMCDisassembler;LLVMX86Info;LLVMX86AsmPrinter;LLVMX86Utils;LLVMMCJIT;LLVMipo;LLVMVectorize;LLVMInterpreter;LLVMExecutionEngine;LLVMRuntimeDyld;LLVMCodeGen;LLVMTarget;LLVMScalarOpts;LLVMObject;LLVMMCParser;LLVMBitReader;LLVMInstCombine;LLVMInstrumentation;LLVMTransformUtils;LLVMipa;LLVMMC;LLVMAnalysis;LLVMCore;LLVMSupport")
-
+set(EXT_LLVM_LIBRARIES "LLVMLTO;LLVMObjCARCOpts;LLVMSymbolize;LLVMDebugInfoPDB;LLVMDebugInfoDWARF;LLVMMIRParser;LLVMLibDriver;LLVMOption;LLVMTableGen;LLVMOrcJIT;LLVMPasses;LLVMipo;LLVMVectorize;LLVMLinker;LLVMIRReader;LLVMAsmParser;LLVMX86Disassembler;LLVMX86AsmParser;LLVMX86CodeGen;LLVMSelectionDAG;LLVMAsmPrinter;LLVMX86Desc;LLVMMCDisassembler;LLVMX86Info;LLVMX86AsmPrinter;LLVMX86Utils;LLVMMCJIT;LLVMLineEditor;LLVMDebugInfoCodeView;LLVMInterpreter;LLVMExecutionEngine;LLVMRuntimeDyld;LLVMCodeGen;LLVMTarget;LLVMScalarOpts;LLVMInstCombine;LLVMInstrumentation;LLVMProfileData;LLVMObject;LLVMMCParser;LLVMTransformUtils;LLVMMC;LLVMBitWriter;LLVMBitReader;LLVMAnalysis;LLVMCore;LLVMSupport")
 foreach(llvm_lib ${EXT_LLVM_LIBRARIES})
-  list(APPEND LLVM_LIBRARIES "${EXT_LLVM_DIR}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}${llvm_lib}${CMAKE_STATIC_LIBRARY_SUFFIX}")
+  get_filename_component(LLVM_LIB_FULLPATH "${EXT_LLVM_DIR}/lib/${CMAKE_STATIC_LIBRARY_PREFIX}${llvm_lib}${CMAKE_STATIC_LIBRARY_SUFFIX}" ABSOLUTE)
+  list(APPEND LLVM_LIBRARIES ${LLVM_LIB_FULLPATH})
 endforeach()
 
 #########
@@ -323,6 +367,26 @@ endforeach()
 # *must* have Boost on Windows
 if(WIN32)
   set(BOOST ON)
+  if(NOT BOOST_DIR)
+    # if BOOST_DIR has been set elsewhere, assume it's all present and
+    # correct and go with that. Otherwise, download boost with nuget
+    # commandline tool and stick it in ${CMAKE_SOURCE_DIR}/boost
+    set(BOOST_DIR ${CMAKE_SOURCE_DIR}/boost)
+    # check nuget commandline tool is installed
+    find_program(NUGET nuget)
+    if(NOT NUGET)
+      message(FATAL "Cannot find nuget command line tool.\nEither install it with e.g. choco install nuget.commandline, or get boost some other way and set the -DBOOST_DIR variable")
+    else()
+      if(NOT IS_DIRECTORY ${BOOST_DIR})
+        # if directory exists, assume this step has already been done
+        message(STATUS "Downloading boost components into ${CMAKE_SOURCE_DIR}/boost with \"nuget install\"")
+        file(MAKE_DIRECTORY ${BOOST_DIR})
+        execute_process(
+          COMMAND ${NUGET} install -Version 1.59 boost-vc140
+          WORKING_DIRECTORY ${BOOST_DIR})
+      endif()
+    endif()
+  endif()
 endif()
 
 #############
@@ -333,10 +397,7 @@ endif()
 
 add_executable(extempore src/Extempore.cpp
   src/AudioDevice.cpp
-  src/EXTCondition.cpp
   src/EXTLLVM.cpp
-  src/EXTMonitor.cpp
-  src/EXTMutex.cpp
   src/EXTThread.cpp
   src/Extempore.cpp
   src/OSC.cpp
@@ -363,8 +424,12 @@ endif()
 
 add_dependencies(extempore pcre portaudio)
 
-if(DOWNLOAD_LLVM)
-  add_dependencies(extempore LLVM)
+if(BUILD_LLVM)
+  if(WIN32)
+    add_dependencies(extempore LLVM_install)
+  else()
+    add_dependencies(extempore LLVM)
+  endif()
 endif()
 
 target_include_directories(extempore
@@ -380,21 +445,17 @@ target_link_libraries(extempore PRIVATE ${LLVM_LIBRARIES})
 
 # compiler options
 
-if(MCJIT)
-  target_compile_definitions(extempore PRIVATE -DEXT_MCJIT)
-  message(STATUS "Using the new LLVM MCJIT backend...")
-else()
-  message(STATUS "Using the old LLVM JIT backend...")
-endif()
-
 if(PACKAGE)
   target_compile_definitions(extempore
     PRIVATE -DEXT_SHARE_DIR=".")
   target_compile_options(extempore
     PRIVATE -mtune=generic)
-else()
+elseif(${EXT_SHARE_DIR})
   target_compile_definitions(extempore
     PRIVATE -DEXT_SHARE_DIR="${EXT_SHARE_DIR}")
+else()
+  target_compile_definitions(extempore
+    PRIVATE -DEXT_SHARE_DIR="${CMAKE_SOURCE_DIR}")
 endif()
 
 # platform-specific config
@@ -421,6 +482,9 @@ if(WIN32)
   target_compile_definitions(extempore
     PRIVATE -DPCRE_STATIC
     PRIVATE -D_CRT_SECURE_NO_WARNINGS)
+  set_source_files_properties(
+    PROPERTIES
+    COMPILE_FLAGS "/EHsc")
 elseif(APPLE) # OSX
   # use clang++ by default
   set(CMAKE_C_COMPILER clang)
@@ -458,26 +522,15 @@ if(WIN32)
     ARCHIVE_OUTPUT_DIRECTORY_RELEASE ${CMAKE_SOURCE_DIR}/libs/platform-shlibs)
 endif()
 
-# boost
-
 if(BOOST)
-  if(NOT BOOST_DIR)
-    message(FATAL_ERROR "BOOST_DIR must be defined")
-  endif()
-  target_compile_definitions(extempore PRIVATE -DEXT_BOOST)
-  # asio header
-  find_path(BOOST_ASIO_INCLUDE_DIR
-    NAMES boost/asio.hpp
-    PATHS ${BOOST_DIR}/include)
-  if(BOOST_ASIO_INCLUDE_DIR)
-    target_include_directories(extempore PRIVATE ${BOOST_ASIO_INCLUDE_DIR})
-  else()
-    message(FATAL_ERROR "Cannot find boost/asio.hpp header")
-  endif()
+  target_include_directories(extempore
+    PRIVATE ${BOOST_DIR}/boost.1.59.0.0/lib/native/include)
+  target_compile_definitions(extempore
+    PRIVATE -DEXT_BOOST -DBOOST_EXCEPTION_DISABLE)
   target_link_libraries(extempore
-    PRIVATE ${BOOST_DIR}/lib/libboost_date_time-vc140-mt$<$<CONFIG:Debug>:-gd>-1_59.lib
-    PRIVATE ${BOOST_DIR}/lib/libboost_regex-vc140-mt$<$<CONFIG:Debug>:-gd>-1_59.lib
-    PRIVATE ${BOOST_DIR}/lib/libboost_system-vc140-mt$<$<CONFIG:Debug>:-gd>-1_59.lib)
+    PRIVATE ${BOOST_DIR}/boost_date_time-vc140.1.59.0.0/lib/native/address-model-64/lib/libboost_date_time-vc140-mt$<$<CONFIG:Debug>:-gd>-1_59.lib
+    PRIVATE ${BOOST_DIR}/boost_regex-vc140.1.59.0.0/lib/native/address-model-64/lib/libboost_regex-vc140-mt$<$<CONFIG:Debug>:-gd>-1_59.lib
+    PRIVATE ${BOOST_DIR}/boost_system-vc140.1.59.0.0/lib/native/address-model-64/lib/libboost_system-vc140-mt$<$<CONFIG:Debug>:-gd>-1_59.lib)
 endif()
 
 ##########
@@ -495,36 +548,21 @@ add_custom_target(assets
 # install #
 ###########
 
-if(IN_TREE)
-  # if we're developing in-tree, installation just involves moving the
+if(NOT PACKAGE)
+  # if we're not packaging, installation just involves moving the
   # binary into the toplevel source directory
   install(TARGETS extempore
     RUNTIME
     DESTINATION bin)
 else()
-  # otherwise, install all the things
-  if(PACKAGE)
-    set(EXT_INSTALL_PREFIX extempore)
-    install(TARGETS extempore
-      RUNTIME
-      DESTINATION ${EXT_INSTALL_PREFIX})
-  else()
-    set(EXT_INSTALL_PREFIX share/extempore)
-    install(TARGETS extempore
-      RUNTIME
-      DESTINATION bin)
-  endif()
-  # install the rest of the necessary files into the "share" directory
-  install(DIRECTORY runtime libs examples tests extras
-    DESTINATION ${EXT_INSTALL_PREFIX}
-    PATTERN ".DS_Store" EXCLUDE
-    PATTERN "extras/cmake" EXCLUDE
-    PATTERN "extras/extempore-emacs-mode" EXCLUDE)
-  # assets are optional
-  install(DIRECTORY assets
-    OPTIONAL
-    DESTINATION ${EXT_INSTALL_PREFIX}
+  install(TARGETS extempore
+    RUNTIME
+    DESTINATION extempore)
+  install(DIRECTORY assets runtime libs examples tests
+    DESTINATION extempore
     PATTERN ".DS_Store" EXCLUDE)
+  install(FILES extras/.emacs extras/extempore.el extras/extempore.vim
+    DESTINATION extempore/extras)
 endif()
 
 ###################
@@ -545,68 +583,76 @@ if(WIN32)
 
   add_custom_target(aot
     COMMAND ${CMAKE_COMMAND} -P ${CMAKE_SOURCE_DIR}/extras/cmake/aot.cmake
-    COMMENT "Ahead-of-time compiling the standard library...")
+    COMMENT "Ahead-of-time compiling the standard library..."
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
-  add_custom_target(aot_extended
+  add_custom_target(aot_extended ALL
     COMMAND ${CMAKE_COMMAND} -P ${CMAKE_SOURCE_DIR}/extras/cmake/aot_extended.cmake
-    COMMENT "Ahead-of-time compiling the standard library...")
+    COMMENT "Ahead-of-time compiling the standard library..."
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 
 else(WIN32)
 
   # this approach requires specifying the inter-lib dependencies by hand, but allows us to do AOT compilation in parallell
 
-  function(aotcompile_lib lib group port) # deps are optional, and go at the end
-    get_filename_component(basename ${lib} NAME_WE)
+  set(EXTEMPORE_AOT_COMPILE_PORT 17099)
+
+  macro(aotcompile_lib libfile group) # deps are optional, and go at the end
+    get_filename_component(basename ${libfile} NAME_WE)
     set(targetname aot_${basename})
-    add_custom_target(${targetname}
-      COMMAND extempore --nobase
-                        $<$<NOT:$<PLATFORM_ID:Windows>>:--noaudio>
-                        $<$<AND:$<PLATFORM_ID:Darwin>,$<BOOL:PACKAGE>>:--mcpu=generic>
-                        $<$<BOOL:PACKAGE>:--attr="">
-                        $<$<BOOL:PACKAGE>:--sharedir=${EXT_SHARE_DIR}>
-                        --port=${port}
-                        --eval "(impc:aot:compile-xtm-file \"${lib}\" #t #t)"
-      BYPRODUCTS libs/aot-cache/xtm${basename}${CMAKE_SHARED_LIBRARY_SUFFIX}
-      $<PLATFORM_ID:Windows>:WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}>
-      VERBATIM)
-    add_dependencies(${targetname} extempore)
+    if(PACKAGE)
+      add_custom_target(${targetname}
+        COMMAND extempore --nobase --noaudio --mcpu=generic --attr=none --port=${EXTEMPORE_AOT_COMPILE_PORT}
+        --eval "(impc:aot:compile-xtm-file \"${libfile}\")"
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        VERBATIM)
+    else(PACKAGE)
+      add_custom_target(${targetname}
+        COMMAND extempore --nobase --noaudio --port=${EXTEMPORE_AOT_COMPILE_PORT}
+        --eval "(impc:aot:compile-xtm-file \"${libfile}\")"
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        VERBATIM)
+    endif(PACKAGE)
+    add_dependencies(${targetname} extempore extended_deps)
     add_dependencies(${group} ${targetname})
     foreach(dep ${ARGN})
       add_dependencies(${targetname} aot_${dep})
     endforeach()
-  endfunction(aotcompile_lib)
+    # decrement port number by 2
+    math(EXPR EXTEMPORE_AOT_COMPILE_PORT "${EXTEMPORE_AOT_COMPILE_PORT} - 2")
+  endmacro(aotcompile_lib)
 
   # core
   add_custom_target(aot)
-  aotcompile_lib(libs/base/base.xtm aot 17099) # no lib dependency for base.xtm
-  aotcompile_lib(libs/core/math.xtm aot 17097 base)
-  aotcompile_lib(libs/core/audiobuffer.xtm aot 17087 base)
-  aotcompile_lib(libs/core/audio_dsp.xtm aot 17095 base math audiobuffer)
-  aotcompile_lib(libs/core/instruments.xtm aot 17093 base math audio_dsp)
+  aotcompile_lib(libs/base/base.xtm aot) # no lib dependency for base.xtm
+  aotcompile_lib(libs/core/math.xtm aot base)
+  aotcompile_lib(libs/core/audiobuffer.xtm aot base)
+  aotcompile_lib(libs/core/audio_dsp.xtm aot base math audiobuffer)
+  aotcompile_lib(libs/core/instruments.xtm aot base math audio_dsp)
 
   # extended
-  add_custom_target(aot_extended)
-  aotcompile_lib(libs/external/fft.xtm aot_extended 17091 base math)
-  aotcompile_lib(libs/external/sndfile.xtm aot_extended 17089 base)
-  aotcompile_lib(libs/external/audio_dsp_ext.xtm aot_extended 17085 base fft sndfile)
-  aotcompile_lib(libs/external/instruments_ext.xtm aot_extended 17083 base sndfile instruments)
-  aotcompile_lib(libs/external/portmidi.xtm aot_extended 17081 base)
-  aotcompile_lib(libs/external/stb_image.xtm aot_extended 17077 base)
-  aotcompile_lib(libs/external/glfw3.xtm aot_extended 17075 base)
-  if(WIN32)
+  add_custom_target(aot_extended ALL)
+  aotcompile_lib(libs/external/fft.xtm aot_extended base math)
+  aotcompile_lib(libs/external/sndfile.xtm aot_extended base)
+  aotcompile_lib(libs/external/audio_dsp_ext.xtm aot_extended base fft sndfile)
+  aotcompile_lib(libs/external/instruments_ext.xtm aot_extended base sndfile instruments)
+  aotcompile_lib(libs/external/portmidi.xtm aot_extended base)
+  aotcompile_lib(libs/external/stb_image.xtm aot_extended base)
+  aotcompile_lib(libs/external/glfw3.xtm aot_extended base)
+  if(WIN32 OR DEFINED ENV{EXTEMPORE_FORCE_GL_GETPROCADDRESS})
     set(GL_BIND_METHOD getprocaddress)
   else()
     set(GL_BIND_METHOD directbind)
   endif()
-  aotcompile_lib(libs/external/gl/glcore-${GL_BIND_METHOD}.xtm aot_extended 17073 base)
-  aotcompile_lib(libs/external/gl/gl-objects.xtm aot_extended 17071 base glcore-${GL_BIND_METHOD} stb_image)
-  aotcompile_lib(libs/external/nanovg.xtm aot_extended 17069 base glcore-${GL_BIND_METHOD})
-  aotcompile_lib(libs/external/gl/glcompat-${GL_BIND_METHOD}.xtm aot_extended 17067 base)
-  aotcompile_lib(libs/external/graphics-pipeline.xtm aot_extended 17065 base glcompat-${GL_BIND_METHOD})
+  aotcompile_lib(libs/external/gl/glcore-${GL_BIND_METHOD}.xtm aot_extended base)
+  aotcompile_lib(libs/external/gl/gl-objects.xtm aot_extended base glcore-${GL_BIND_METHOD} stb_image)
+  aotcompile_lib(libs/external/nanovg.xtm aot_extended base glcore-${GL_BIND_METHOD})
+  aotcompile_lib(libs/external/gl/glcompat-${GL_BIND_METHOD}.xtm aot_extended base)
+  aotcompile_lib(libs/external/graphics-pipeline.xtm aot_extended base glcompat-${GL_BIND_METHOD})
   if(NOT WIN32)
     # these ones don't currently work on Windows
-    # aotcompile_lib(libs/external/glib.xtm aot_extended 17079 base)
-    aotcompile_lib(libs/external/assimp.xtm aot_extended 17063 base stb_image graphics-pipeline)
+    # aotcompile_lib(libs/external/glib.xtm aot_extended base)
+    aotcompile_lib(libs/external/assimp.xtm aot_extended base stb_image graphics-pipeline)
   endif()
 
 endif(WIN32)
@@ -616,27 +662,14 @@ add_dependencies(aot_extended extempore)
 
 # uninstall only AOT-compiled libs
 add_custom_target(clean_aot
-  COMMAND ${CMAKE_COMMAND} -E remove_directory ${EXT_SHARE_DIR}/libs/aot-cache
+  COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_SOURCE_DIR}/libs/aot-cache
   COMMENT "Removing AOT-compiled libs")
 
 #########################
 # deps for AOT-extended #
 #########################
 
-if(EXTENDED_DEPS)
-
-  set(EXT_DEPS_INSTALL_DIR ${CMAKE_BINARY_DIR}/deps-install)
-  if(WIN32)
-    set(EXT_PLATFORM_SHLIBS_DIR ${CMAKE_SOURCE_DIR}/libs/platform-shlibs)
-  else()
-    set(EXT_PLATFORM_SHLIBS_DIR ${EXT_SHARE_DIR}/libs/platform-shlibs)
-  endif()
-
-  if(PACKAGE)
-    set(EXT_DEPS_C_FLAGS "${CMAKE_C_FLAGS_RELEASE} -mtune=generic")
-    set(EXT_DEPS_CXX_FLAGS "${CMAKE_CXX_FLAGS_RELEASE} -mtune=generic")
-    message(STATUS "compiler flags for packaging:\nC    ${EXT_DEPS_C_FLAGS}\nCXX  ${EXT_DEPS_CXX_FLAGS}")
-  endif()
+if(BUILD_DEPS)
 
   include(ExternalProject)
 
@@ -644,8 +677,6 @@ if(EXTENDED_DEPS)
     PREFIX portmidi
     URL https://github.com/extemporelang/portmidi/archive/217.zip
     CMAKE_ARGS
-    -DCMAKE_OSX_SYSROOT=macosx
-    -DCMAKE_OSX_DEPLOYMENT_TARGET=10.9
     -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
     -DCMAKE_C_FLAGS=${EXT_DEPS_C_FLAGS}
     -DCMAKE_CXX_FLAGS=${EXT_DEPS_CXX_FLAGS}
@@ -653,10 +684,8 @@ if(EXTENDED_DEPS)
 
   ExternalProject_Add(nanovg
     PREFIX nanovg
-    URL https://github.com/extemporelang/nanovg/archive/master.zip
+    URL https://github.com/extemporelang/nanovg/archive/0.7.1.zip
     CMAKE_ARGS
-    -DCMAKE_OSX_SYSROOT=macosx
-    -DCMAKE_OSX_DEPLOYMENT_TARGET=10.9
     -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
     -DCMAKE_C_FLAGS=${EXT_DEPS_C_FLAGS}
     -DCMAKE_CXX_FLAGS=${EXT_DEPS_CXX_FLAGS}
@@ -666,8 +695,6 @@ if(EXTENDED_DEPS)
     PREFIX kiss_fft
     URL https://github.com/extemporelang/kiss_fft/archive/master.zip
     CMAKE_ARGS
-    -DCMAKE_OSX_SYSROOT=macosx
-    -DCMAKE_OSX_DEPLOYMENT_TARGET=10.9
     -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
     -DCMAKE_C_FLAGS=${EXT_DEPS_C_FLAGS}
     -DCMAKE_CXX_FLAGS=${EXT_DEPS_CXX_FLAGS}
@@ -677,8 +704,6 @@ if(EXTENDED_DEPS)
     PREFIX stb_image
     URL https://github.com/extemporelang/stb/archive/master.zip
     CMAKE_ARGS
-    -DCMAKE_OSX_SYSROOT=macosx
-    -DCMAKE_OSX_DEPLOYMENT_TARGET=10.9
     -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
     -DCMAKE_C_FLAGS=${EXT_DEPS_C_FLAGS}
     -DCMAKE_CXX_FLAGS=${EXT_DEPS_CXX_FLAGS}
@@ -686,10 +711,8 @@ if(EXTENDED_DEPS)
 
   ExternalProject_Add(glfw3
     PREFIX glfw3
-    URL https://github.com/glfw/glfw/archive/3.1.2.zip
+    URL https://github.com/glfw/glfw/archive/3.2.zip
     CMAKE_ARGS
-    -DCMAKE_OSX_SYSROOT=macosx
-    -DCMAKE_OSX_DEPLOYMENT_TARGET=10.9
     -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
     -DCMAKE_C_FLAGS=${EXT_DEPS_C_FLAGS}
     -DCMAKE_CXX_FLAGS=${EXT_DEPS_CXX_FLAGS}
@@ -700,13 +723,14 @@ if(EXTENDED_DEPS)
 
   ExternalProject_Add(assimp
     PREFIX assimp
-    URL https://github.com/assimp/assimp/archive/v3.1.1.zip
+    URL https://github.com/assimp/assimp/archive/v3.2.zip
     CMAKE_ARGS
-    -DCMAKE_OSX_SYSROOT=macosx
-    -DCMAKE_OSX_DEPLOYMENT_TARGET=10.9
     -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
     -DCMAKE_C_FLAGS=${EXT_DEPS_C_FLAGS}
     -DCMAKE_CXX_FLAGS=${EXT_DEPS_CXX_FLAGS}
+    -DASSIMP_BUILD_ASSIMP_TOOLS=OFF
+    -DASSIMP_BUILD_SAMPLES=OFF
+    -DASSIMP_BUILD_TESTS=OFF
     -DCMAKE_INSTALL_PREFIX=${EXT_DEPS_INSTALL_DIR})
 
   if(WIN32)
@@ -718,8 +742,6 @@ if(EXTENDED_DEPS)
       -DBUILD_tools=OFF
       -DBUILD_examples=OFF
       -DBUILD_tests=OFF
-      -DCMAKE_OSX_SYSROOT=macosx
-      -DCMAKE_OSX_DEPLOYMENT_TARGET=10.9
       -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
       -DCMAKE_C_FLAGS=${EXT_DEPS_C_FLAGS}
       -DCMAKE_CXX_FLAGS=${EXT_DEPS_CXX_FLAGS}
@@ -733,8 +755,6 @@ if(EXTENDED_DEPS)
       CMAKE_ARGS
       -DAPR_HAVE_ODBC=OFF
       -DINSTALL_PDB=OFF
-      -DCMAKE_OSX_SYSROOT=macosx
-      -DCMAKE_OSX_DEPLOYMENT_TARGET=10.9
       -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
       -DCMAKE_C_FLAGS=${EXT_DEPS_C_FLAGS}
       -DCMAKE_CXX_FLAGS=${EXT_DEPS_CXX_FLAGS}
@@ -743,15 +763,18 @@ if(EXTENDED_DEPS)
     add_dependencies(apr expat)
 
     # aargh! sndfile on Windows still requires sh, sed, etc. and
-    # doesn't work. so we'll just grab the pre-built one manually
+    # doesn't work. so we'll just grab the pre-built one manually. for
+    # the moment I've just hosted the (unmodified) libsndfile binaries
+    # (a bit of a hack), but you can get an installer from
+    # http://www.mega-nerd.com/libsndfile/#Download
+    file(DOWNLOAD https://dl.dropboxusercontent.com/u/18333720/libsndfile-1.dll ${EXT_PLATFORM_SHLIBS_DIR}/libsndfile-1.dll)
+    file(DOWNLOAD https://dl.dropboxusercontent.com/u/18333720/libsndfile-1.lib ${EXT_PLATFORM_SHLIBS_DIR}/libsndfile-1.lib)
 
     # ExternalProject_Add(sndfile
     #   PREFIX libsndfile
     #   URL https://github.com/erikd/libsndfile/archive/master.zip
     #   CONFIGURE_COMMAND ${CMAKE_BINARY_DIR}/libsndfile/src/sndfile/autogen.sh cmake && ${CMAKE_COMMAND} ${CMAKE_SOURCE_DIR}
     #   CMAKE_ARGS
-    #   -DCMAKE_OSX_SYSROOT=macosx
-    #   -DCMAKE_OSX_DEPLOYMENT_TARGET=10.9
     #   -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
     #   -DCMAKE_INSTALL_PREFIX=${EXT_DEPS_INSTALL_DIR})
   else()
@@ -759,95 +782,151 @@ if(EXTENDED_DEPS)
     ExternalProject_Add(sndfile
       PREFIX libsndfile
       URL http://www.mega-nerd.com/libsndfile/files/libsndfile-1.0.26.tar.gz
-      CONFIGURE_COMMAND sh configure --prefix=${EXT_DEPS_INSTALL_DIR} --disable-static --disable-cpu-clip --disable-external-libs --disable-sqlite
-      BUILD_COMMAND make CFLAGS=${EXT_DEPS_C_FLAGS}
+      CONFIGURE_COMMAND sh configure --prefix=${EXT_DEPS_INSTALL_DIR} --disable-static --disable-cpu-clip --disable-external-libs --disable-sqlite --disable-octave
+      BUILD_COMMAND $(MAKE) CFLAGS=${EXT_DEPS_C_FLAGS}
       INSTALL_COMMAND make install
       BUILD_IN_SOURCE ON)
 
     ExternalProject_Add(apr
       PREFIX apr
       URL http://mirror.ventraip.net.au/apache/apr/apr-1.5.2.tar.gz
-      CONFIGURE_COMMAND sh configure --prefix=${CMAKE_BINARY_DIR}/deps-install --enable-threads --disable-static
-      BUILD_COMMAND make
+      CONFIGURE_COMMAND sh configure --prefix=${EXT_DEPS_INSTALL_DIR} --enable-threads --disable-static
+      BUILD_COMMAND $(MAKE)
       INSTALL_COMMAND make install
       BUILD_IN_SOURCE ON)
   endif()
 
-  if(PACKAGE)
-    ExternalProject_Add(LLVM-packaging
-      PREFIX llvm
-      URL http://www.llvm.org/releases/3.7.0/llvm-3.7.0.src.tar.xz
-      URL_MD5 b98b9495e5655a672d6cb83e1a180f8e
-      PATCH_COMMAND patch -p0 < ${CMAKE_SOURCE_DIR}/extras/extempore-llvm-3.7.0.patch
-      CMAKE_ARGS
-      -DCMAKE_OSX_SYSROOT=macosx
-      -DCMAKE_OSX_DEPLOYMENT_TARGET=10.9
-      -DLLVM_TARGETS_TO_BUILD=X86
-      -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-      -DLLVM_ENABLE_TERMINFO=OFF
-      -DLLVM_ENABLE_ZLIB=OFF
-      -DCMAKE_C_FLAGS=${EXT_DEPS_C_FLAGS}
-      -DCMAKE_CXX_FLAGS=${EXT_DEPS_CXX_FLAGS}
-      -DCMAKE_INSTALL_PREFIX=${EXT_DEPS_INSTALL_DIR})
-
-    add_dependencies(extempore LLVM-packaging)
-  endif()
-
   # wrap the whole thing in a target
 
-  if(APPLE)
+  if(UNIX)
     add_custom_target(extended_deps
-      COMMENT "moving shared libs into libs/platform-shlibs"
-      DEPENDS sndfile assimp glfw3 stb_image kiss_fft nanovg portmidi LLVM-packaging sndfile apr
-      COMMAND cmake -E copy ${EXT_DEPS_INSTALL_DIR}/lib/libassimp.dylib ${EXT_PLATFORM_SHLIBS_DIR}
-      COMMAND cmake -E copy ${EXT_DEPS_INSTALL_DIR}/lib/libkiss_fft.dylib ${EXT_PLATFORM_SHLIBS_DIR}
-      COMMAND cmake -E copy ${EXT_DEPS_INSTALL_DIR}/lib/libnanovg.dylib ${EXT_PLATFORM_SHLIBS_DIR}
-      COMMAND cmake -E copy ${EXT_DEPS_INSTALL_DIR}/lib/libportmidi.dylib ${EXT_PLATFORM_SHLIBS_DIR}
-      COMMAND cmake -E copy ${EXT_DEPS_INSTALL_DIR}/lib/libsndfile.dylib ${EXT_PLATFORM_SHLIBS_DIR}
-      COMMAND cmake -E copy ${EXT_DEPS_INSTALL_DIR}/lib/libstb_image.dylib ${EXT_PLATFORM_SHLIBS_DIR}
-      COMMAND cmake -E copy ${EXT_DEPS_INSTALL_DIR}/lib/libglfw.3.dylib ${EXT_PLATFORM_SHLIBS_DIR}
-      COMMAND cmake -E copy ${EXT_DEPS_INSTALL_DIR}/lib/libapr-1.0.dylib ${EXT_PLATFORM_SHLIBS_DIR})
+      COMMENT "moving shared libs into ${EXT_PLATFORM_SHLIBS_DIR}"
+      DEPENDS sndfile assimp glfw3 stb_image kiss_fft nanovg portmidi LLVM sndfile apr
+      COMMAND ${CMAKE_COMMAND} -E make_directory ${EXT_PLATFORM_SHLIBS_DIR}
+      COMMAND ${CMAKE_COMMAND} -E copy libassimp${CMAKE_SHARED_LIBRARY_SUFFIX} ${EXT_PLATFORM_SHLIBS_DIR}
+      COMMAND ${CMAKE_COMMAND} -E copy libkiss_fft${CMAKE_SHARED_LIBRARY_SUFFIX} ${EXT_PLATFORM_SHLIBS_DIR}
+      COMMAND ${CMAKE_COMMAND} -E copy libnanovg${CMAKE_SHARED_LIBRARY_SUFFIX} ${EXT_PLATFORM_SHLIBS_DIR}
+      COMMAND ${CMAKE_COMMAND} -E copy libportmidi${CMAKE_SHARED_LIBRARY_SUFFIX} ${EXT_PLATFORM_SHLIBS_DIR}
+      COMMAND ${CMAKE_COMMAND} -E copy libsndfile${CMAKE_SHARED_LIBRARY_SUFFIX} ${EXT_PLATFORM_SHLIBS_DIR}
+      COMMAND ${CMAKE_COMMAND} -E copy libstb_image${CMAKE_SHARED_LIBRARY_SUFFIX} ${EXT_PLATFORM_SHLIBS_DIR}
+      COMMAND ${CMAKE_COMMAND} -E copy libglfw${CMAKE_SHARED_LIBRARY_SUFFIX} ${EXT_PLATFORM_SHLIBS_DIR}
+      COMMAND ${CMAKE_COMMAND} -E copy libapr-1${CMAKE_SHARED_LIBRARY_SUFFIX} ${EXT_PLATFORM_SHLIBS_DIR}
+      WORKING_DIRECTORY ${EXT_DEPS_INSTALL_DIR}/lib)
   elseif(WIN32)
     add_custom_target(extended_deps
-      COMMENT "moving shared libs into libs/platform-shlibs"
-      DEPENDS sndfile assimp glfw3 stb_image kiss_fft nanovg portmidi LLVM-packaging sndfile apr
-      COMMAND cmake -E copy ${EXT_DEPS_INSTALL_DIR}/bin/assimp.dll ${EXT_PLATFORM_SHLIBS_DIR}
-      COMMAND cmake -E copy ${EXT_DEPS_INSTALL_DIR}/lib/kiss_fft.dll ${EXT_PLATFORM_SHLIBS_DIR}
-      COMMAND cmake -E copy ${EXT_DEPS_INSTALL_DIR}/lib/nanovg.dll ${EXT_PLATFORM_SHLIBS_DIR}
-      COMMAND cmake -E copy ${EXT_DEPS_INSTALL_DIR}/lib/portmidi.dll ${EXT_PLATFORM_SHLIBS_DIR}
-      # COMMAND cmake -E copy ${EXT_DEPS_INSTALL_DIR}/lib/libsndfile-1.dll ${EXT_PLATFORM_SHLIBS_DIR}
-      COMMAND cmake -E copy ${EXT_DEPS_INSTALL_DIR}/lib/stb_image.dll ${EXT_PLATFORM_SHLIBS_DIR}
-      COMMAND cmake -E copy ${EXT_DEPS_INSTALL_DIR}/lib/glfw3.dll ${EXT_PLATFORM_SHLIBS_DIR}
-      COMMAND cmake -E copy ${EXT_DEPS_INSTALL_DIR}/bin/libapr-1.dll ${EXT_PLATFORM_SHLIBS_DIR}
-      # on Windows, move the .lib files as well
-      COMMAND cmake -E copy ${EXT_DEPS_INSTALL_DIR}/lib/assimp.lib ${EXT_PLATFORM_SHLIBS_DIR}
-      COMMAND cmake -E copy ${EXT_DEPS_INSTALL_DIR}/lib/kiss_fft.lib ${EXT_PLATFORM_SHLIBS_DIR}
-      COMMAND cmake -E copy ${EXT_DEPS_INSTALL_DIR}/lib/nanovg.lib ${EXT_PLATFORM_SHLIBS_DIR}
-      COMMAND cmake -E copy ${EXT_DEPS_INSTALL_DIR}/lib/portmidi.lib ${EXT_PLATFORM_SHLIBS_DIR}
-      # COMMAND cmake -E copy ${EXT_DEPS_INSTALL_DIR}/lib/libsndfile-1.lib ${EXT_PLATFORM_SHLIBS_DIR}
-      COMMAND cmake -E copy ${EXT_DEPS_INSTALL_DIR}/lib/stb_image.lib ${EXT_PLATFORM_SHLIBS_DIR}
-      COMMAND cmake -E copy ${EXT_DEPS_INSTALL_DIR}/lib/glfw3dll.lib ${EXT_PLATFORM_SHLIBS_DIR}
-      COMMAND cmake -E copy ${EXT_DEPS_INSTALL_DIR}/lib/libapr-1.lib ${EXT_PLATFORM_SHLIBS_DIR})
+      COMMENT "moving .dll and .lib files into ${EXT_PLATFORM_SHLIBS_DIR}"
+      DEPENDS sndfile assimp glfw3 stb_image kiss_fft nanovg portmidi LLVM sndfile apr
+      COMMAND ${CMAKE_COMMAND} -E make_directory ${EXT_PLATFORM_SHLIBS_DIR}
+      COMMAND ${CMAKE_COMMAND} -E copy bin/assimp-vc130-mt.dll ${EXT_PLATFORM_SHLIBS_DIR}
+      COMMAND ${CMAKE_COMMAND} -E copy lib/kiss_fft.dll ${EXT_PLATFORM_SHLIBS_DIR}
+      COMMAND ${CMAKE_COMMAND} -E copy lib/nanovg.dll ${EXT_PLATFORM_SHLIBS_DIR}
+      COMMAND ${CMAKE_COMMAND} -E copy lib/portmidi.dll ${EXT_PLATFORM_SHLIBS_DIR}
+      COMMAND ${CMAKE_COMMAND} -E copy lib/stb_image.dll ${EXT_PLATFORM_SHLIBS_DIR}
+      COMMAND ${CMAKE_COMMAND} -E copy lib/glfw3.dll ${EXT_PLATFORM_SHLIBS_DIR}
+      COMMAND ${CMAKE_COMMAND} -E copy bin/libapr-1.dll ${EXT_PLATFORM_SHLIBS_DIR}
+      COMMAND ${CMAKE_COMMAND} -E copy lib/assimp-vc130-mt.lib ${EXT_PLATFORM_SHLIBS_DIR}
+      COMMAND ${CMAKE_COMMAND} -E copy lib/kiss_fft.lib ${EXT_PLATFORM_SHLIBS_DIR}
+      COMMAND ${CMAKE_COMMAND} -E copy lib/nanovg.lib ${EXT_PLATFORM_SHLIBS_DIR}
+      COMMAND ${CMAKE_COMMAND} -E copy lib/portmidi.lib ${EXT_PLATFORM_SHLIBS_DIR}
+      COMMAND ${CMAKE_COMMAND} -E copy lib/stb_image.lib ${EXT_PLATFORM_SHLIBS_DIR}
+      # glfw3 has different base names for the .dll and .lib, so fix that
+      COMMAND ${CMAKE_COMMAND} -E copy lib/glfw3dll.lib ${EXT_PLATFORM_SHLIBS_DIR}/glfw3.lib
+      COMMAND ${CMAKE_COMMAND} -E copy lib/libapr-1.lib ${EXT_PLATFORM_SHLIBS_DIR}
+      WORKING_DIRECTORY ${EXT_DEPS_INSTALL_DIR})
   endif()
 
-  add_dependencies(aot_extended extended_deps)
+add_dependencies(aot_extended extended_deps)
 
-endif(EXTENDED_DEPS)
+endif(BUILD_DEPS)
 
 #########
 # tests #
 #########
 
-include(CTest)
+option(BUILD_TESTS "build test targets (including examples)" ON)
 
-if(BUILD_TESTING)
-  add_test(
-    NAME core
-    COMMAND extempore --noaudio --port=17097 --run tests/all-core.xtm)
-  add_test(
-    NAME extended
-    COMMAND extempore --noaudio --port=17097 --run tests/all-external.xtm)
-endif()
+if(BUILD_TESTS)
+
+  include(CTest)
+
+  set(EXTEMPORE_TEST_PORT 17099)
+
+  macro(extempore_add_test testfile label)
+    add_test(NAME ${testfile}
+      COMMAND extempore --term nocolor --port=${EXTEMPORE_TEST_PORT} --eval "(xtmtest-run-tests \"${testfile}\" #t #t)")
+    set_tests_properties(${testfile}
+      PROPERTIES
+      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+      LABELS ${label})
+    # decrement port number by 2
+    math(EXPR EXTEMPORE_TEST_PORT "${EXTEMPORE_TEST_PORT} - 2")
+  endmacro()
+
+  macro(extempore_add_example_as_test examplefile timeout label)
+    add_test(NAME ${examplefile}
+      COMMAND extempore --term nocolor --port=${EXTEMPORE_TEST_PORT} --eval "(sys:load-then-quit \"${examplefile}\" ${timeout})")
+    set_tests_properties(${examplefile}
+      PROPERTIES
+      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+      TIMEOUT 300 # nothing should take longer than 5mins
+      LABELS ${label})
+    # decrement port number by 2
+    math(EXPR EXTEMPORE_TEST_PORT "${EXTEMPORE_TEST_PORT} - 2")
+  endmacro()
+
+  # tests - core
+  extempore_add_test(tests/core/system.xtm libs-core)
+  extempore_add_test(tests/core/adt.xtm libs-core)
+  extempore_add_test(tests/core/math.xtm libs-core)
+  extempore_add_test(tests/core/std.xtm libs-core)
+  extempore_add_test(tests/core/xtlang.xtm libs-core)
+  extempore_add_test(tests/core/generics.xtm libs-core)
+  # tests - external
+  extempore_add_test(tests/external/fft.xtm libs-external)
+  # examples - core
+  extempore_add_example_as_test(examples/core/audio_101.xtm 10 examples-audio)
+  # extempore_add_example_as_test(examples/core/extempore_lang.xtm 10 examples-core) # doesn't terminate
+  extempore_add_example_as_test(examples/core/fasta_lang_shootout.xtm 10 examples-core)
+  extempore_add_example_as_test(examples/core/fmsynth.xtm 10 examples-audio)
+  extempore_add_example_as_test(examples/core/midi_synth.xtm 10 examples-audio)
+  extempore_add_example_as_test(examples/core/mtaudio.xtm 10 examples-audio)
+  extempore_add_example_as_test(examples/core/nbody_lang_shootout.xtm 10 examples-core)
+  extempore_add_example_as_test(examples/core/osc_101.xtm 10 examples-core)
+  extempore_add_example_as_test(examples/core/polysynth.xtm 10 examples-audio)
+  extempore_add_example_as_test(examples/core/scheduler.xtm 10 examples-audio)
+  extempore_add_example_as_test(examples/core/topclock_metro.xtm 10 examples-audio)
+  extempore_add_example_as_test(examples/core/typeclasses.xtm 10 examples-core)
+  extempore_add_example_as_test(examples/core/xthread.xtm 10 examples-core)
+  # examples - external
+  extempore_add_example_as_test(examples/external/audio_player.xtm 10 examples-audio)
+  extempore_add_example_as_test(examples/external/convolution_reverb.xtm 10 examples-audio)
+  extempore_add_example_as_test(examples/external/electrofunk.xtm 10 examples-audio)
+  extempore_add_example_as_test(examples/external/gl-compatibility.xtm 10 examples-graphics)
+  extempore_add_example_as_test(examples/external/going-native.xtm 60 examples-graphics)
+  extempore_add_example_as_test(examples/external/granulator.xtm 10 examples-audio)
+  extempore_add_example_as_test(examples/external/gui.xtm 10 examples-graphics)
+  extempore_add_example_as_test(examples/external/openvg.xtm 10 examples-graphics)
+  extempore_add_example_as_test(examples/external/portmidi-output.xtm 10 examples-audio) # no audio output, but sends MIDI messages
+  extempore_add_example_as_test(examples/external/portmidi.xtm 10 examples-audio)        # no audio output, but sends MIDI messages
+  extempore_add_example_as_test(examples/external/raymarcher.xtm 10 examples-graphics)
+  extempore_add_example_as_test(examples/external/sampler.xtm 10 examples-audio)
+  extempore_add_example_as_test(examples/external/shader-tutorials/arrows.xtm 10 examples-graphics)
+  extempore_add_example_as_test(examples/external/shader-tutorials/framebuffer.xtm 10 examples-graphics)
+  extempore_add_example_as_test(examples/external/shader-tutorials/heatmap.xtm 10 examples-graphics)
+  extempore_add_example_as_test(examples/external/shader-tutorials/particles.xtm 10 examples-graphics)
+  extempore_add_example_as_test(examples/external/shader-tutorials/points.xtm 10 examples-graphics)
+  extempore_add_example_as_test(examples/external/shader-tutorials/shadertoy.xtm 10 examples-graphics)
+  extempore_add_example_as_test(examples/external/shader-tutorials/simple-triangle.xtm 10 examples-graphics)
+  extempore_add_example_as_test(examples/external/shader-tutorials/texture.xtm 10 examples-graphics)
+  extempore_add_example_as_test(examples/external/shader-tutorials/triangle.xtm 10 examples-graphics)
+  extempore_add_example_as_test(examples/external/sing_a_song.xtm 10 examples-audio)
+  extempore_add_example_as_test(examples/external/spectrogram.xtm 10 examples-graphics) # contains audio as well
+  extempore_add_example_as_test(examples/external/xtmrender1.xtm 10 examples-graphics)
+  extempore_add_example_as_test(examples/external/xtmrender2.xtm 10 examples-graphics)
+  extempore_add_example_as_test(examples/external/xtmrender3.xtm 10 examples-graphics)
+  extempore_add_example_as_test(examples/external/xtmrender4.xtm 10 examples-graphics)
+
+endif(BUILD_TESTS)
 
 ##########
 # xtmdoc #
@@ -872,20 +951,25 @@ add_dependencies(xtmdoc extempore)
 set(CPACK_PACKAGE_NAME "Extempore")
 set(CPACK_PACKAGE_VENDOR "Andrew Sorensen")
 set(CPACK_PACKAGE_CONTACT "Ben Swift")
-
-# CPACK_PACKAGE_DIRECTORY
 set(CPACK_PACKAGE_VERSION_MAJOR ${PROJECT_VERSION_MAJOR})
 set(CPACK_PACKAGE_VERSION_MINOR ${PROJECT_VERSION_MINOR})
 set(CPACK_PACKAGE_VERSION_PATCH ${PROJECT_VERSION_PATCH})
 
-# CPACK_PACKAGE_DESCRIPTION_FILE
+# give the zipball a nice name on each platform
+if(APPLE)
+  set(CPACK_PACKAGE_FILE_NAME Extempore-${PROJECT_VERSION}-osx10.9+)
+elseif(UNIX)
+  set(CPACK_PACKAGE_FILE_NAME Extempore-${PROJECT_VERSION}-${EXTEMPORE_SYSTEM_NAME})
+elseif(WIN32)
+  set(CPACK_PACKAGE_FILE_NAME Extempore-${PROJECT_VERSION}-win${EXTEMPORE_SYSTEM_VERSION})
+endif()
 
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "The Extempore programming environment (http://extempore.moso.com.au)")
 
 if(APPLE)
   set(CPACK_GENERATOR DragNDrop)
 elseif(UNIX AND NOT APPLE)
-  set(CPACK_GENERATOR DEB)
+  set(CPACK_GENERATOR TGZ)
 elseif(WIN32)
   set(CPACK_GENERATOR ZIP)
   # set(CPACK_GENERATOR NSIS64)
