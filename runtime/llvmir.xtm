@@ -235,7 +235,7 @@
 (define impc:ir:get-generic-tuple-typevars
   (lambda (t)
     (if (impc:ti:namedtype-exists? (impc:ir:get-base-type t))
-        (if (regex:match? t "_poly_")
+        (if (string-contains? t "_poly_")
             (let* ((base (impc:ir:get-base-type t))
                    (ptrs (impc:ir:get-ptr-depth t))
                    (p (regex:split base "_poly_"))
@@ -315,10 +315,17 @@
           (list (car split-name) (cname-decode (cadr split-name))))
         #f)))
 
-;; now with pretty print support
 (define impc:ir:get-type-from-pretty-str
   (lambda (string-type . args)
-    ;; (println 'ir:get-type-from-pretty-str 'stype: string-type 'args: args)
+    ;; (println 'pretty-string-type-in string-type)   
+    (let ((res (apply impc:ir:get-type-from-pretty-str-rec string-type args)))
+      ;; (println 'pretty-string-type string-type 'to res)
+      res)))
+
+;; now with pretty print support
+(define impc:ir:get-type-from-pretty-str-rec
+  (lambda (string-type . args)
+    ;; (println 'ir:get-type-from-pretty-str-rec 'stype: string-type 'args: args)
     (if (or (not (string? string-type))
             (string=? "" string-type))
         (impc:compiler:print-compiler-error (string-append "impc:ir:get-type-from-pretty-str must take a string, not " (sexpr->string string-type))))
@@ -367,6 +374,7 @@
                ;; (println 'prealias-p: p)
                ;; set p in case we have aliased types in args that need unaliasing!
                (set! p (list (car p) (string-append "<" (string-join ags2 ",") ">")))
+
                ;; (println 'postalias-p: p)
                ;; (println 'kit: base 'P: p)
                ;; (println 't (cadr p))
@@ -382,111 +390,206 @@
                           ;; (type-all (regex:match-all (cadr p) "(![a-zA-Z0-9-_]*)")))
                           (gtype-all (impc:ir:get-pretty-tuple-arg-strings (symbol->string gtype)))
                           (type-all (impc:ir:get-pretty-tuple-arg-strings (cadr p))))
-                     ;; (println 'gtype-all gtype-all)
+
+                     ;; (if (and (not (null? args))
+                     ;;          (string? (car args))
+                     ;;          (string=? (car p) (car args)))
+                     ;;     (println 'return 'this:
+                     ;;              (cons (+ *impc:ir:tuple* (* *impc:ir:pointer* ptr-depth))
+                     ;;                    (map string->symbol (impc:ir:get-pretty-tuple-arg-strings (cadr p))))))
+
+                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                     ;; just here as a print check
+                     ;; (if (not (and (not (null? args))
+                     ;;               (string? (car args))
+                     ;;               (string=? (car p) (car args))))
+                     ;;     (println "I *think* I'm a reified type!" (car p) " with:" p " and: " args))
+                     ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+                     
+                     ;; (println '------ 'p p 'gtype-all gtype-all)
                      ;; (println 'type-all type-all)
                      ;; (println 'hitmarck gtype-all type-all)
                      ;; (println 'actuals gtype (cadr p))
+                     ;; (println 'pingo: (impc:ir:pointer++ (car p) ptr-depth))
                      (if (<> (length gtype-all) (length type-all))
                          (impc:compiler:print-type-mismatch-error (cadr p) gtype))
-                     (impc:ir:get-type-from-pretty-str (impc:ir:pointer++ (car p) ptr-depth)
-                                                       (list (car p) (cons
-                                                                      (cons (car p) base)
-                                                                      (map (lambda (a b)
-                                                                             (let ((aa (impc:ir:get-type-from-pretty-str a))
-                                                                                   (bb (impc:ir:get-type-from-pretty-str b)))
-                                                                               ;; (println 'a a 'b b)
-                                                                               ;; (println 'aa aa 'bb bb)
-                                                                               ;; (println (impc:ir:type? aa) '- (impc:ir:type? bb))
-                                                                               (if (impc:ir:type? aa) (set! a aa))
-                                                                               (if (impc:ir:type? bb) (set! b bb))
-                                                                               (cons a b)))
-                                                                           gtype-all type-all)))))
-                   (impc:ir:get-type-from-pretty-str ;; otherwise fully typed
-                    (string-append "%" (car p) "_poly_"
-                                   (if (impc:ti:generictype-exists? (car p))
-                                       (impc:ti:generate-generic-type-cname
-                                        (cadr p)
-                                        (symbol->string (impc:ti:get-generictype-candidate-types (car p))))
-                                       (if (= (length p) 2)
-                                           (cname-encode (cadr p))
-                                           (cname-encode (apply string-append (cadr p)
-                                                                (map (lambda (x) (string-append ":" x))
-                                                                     (cddr p))))))
-                                   (make-string ptr-depth #\*))))))
+                     (if (and (not (null? args))
+                              (string? (car args))
+                              (string=? (car p) (car args)))
+                         (cons (+ *impc:ir:tuple* (* *impc:ir:pointer* ptr-depth))
+                               (map string->symbol (impc:ir:get-pretty-tuple-arg-strings (cadr p))))
+                         (apply impc:ir:get-type-from-pretty-str-rec
+                                (impc:ir:pointer++ (car p) ptr-depth)
+                                (list (car p) (cons
+                                               (cons (car p) base)
+                                               (map (lambda (a b)
+                                                      ;; (println 'a a 'b b)
+                                                      (let ((aa (apply impc:ir:get-type-from-pretty-str-rec a args))
+                                                            (bb (apply impc:ir:get-type-from-pretty-str-rec b args)))
+                                                        ;; (println 'a a 'b b)
+                                                        ;; (println 'aa aa 'bb bb)
+                                                        ;; (println (impc:ir:type? aa) '- (impc:ir:type? bb))
+                                                        (if (impc:ir:type? aa) (set! a aa))
+                                                        (if (impc:ir:type? bb) (set! b bb))
+                                                        (cons a b)))
+                                                    gtype-all type-all))))))
+                   ;; (string-append "%" (car p) "_poly_"
+                   ;;                       (if (impc:ti:generictype-exists? (car p))
+                   ;;                           (impc:ti:generate-generic-type-cname
+                   ;;                            (cadr p)
+                   ;;                            (symbol->string (impc:ti:get-generictype-candidate-types (car p))))
+                   ;;                           (if (= (length p) 2)
+                   ;;                               (cname-encode (cadr p))
+                   ;;                               (cname-encode (apply string-append (cadr p)
+                   ;;                                                    (map (lambda (x) (string-append ":" x))
+                   ;;                                                         (cddr p))))))
+                   ;;                       (make-string ptr-depth #\*)))))
+                   (apply impc:ir:get-type-from-pretty-str-rec ;; otherwise fully typed
+                          (string-append "%" (car p) "_poly_"
+                                         (if (impc:ti:generictype-exists? (car p))
+                                             (impc:ti:generate-generic-type-cname
+                                              (cadr p)
+                                              (symbol->string (impc:ti:get-generictype-candidate-types (car p))))
+                                             (if (= (length p) 2)
+                                                 (cname-encode (cadr p))
+                                                 (cname-encode (apply string-append (cadr p)
+                                                                      (map (lambda (x) (string-append ":" x))
+                                                                           (cddr p))))))
+                                         (make-string ptr-depth #\*))
+                          args))))
             ((regex:match? base "^[A-Za-z0-9_]*\\{")
              (let* ((p (impc:ti:split-namedtype base)) ;; (regex:type-split base "{"))
                     (argstr (cadr p)) ;;(string-append "<" (substring (cadr p) 0 (- (string-length (cadr p)) 1)) ">"))
-                    (res ""))
-               ;; (println 'base base 'p p 'argstr argstr)
-               (if (not (regex:match? argstr "!")) ;; if no bangs present we can reify
+                    (res "")
+                    (tup (impc:ir:get-pretty-tuple-arg-strings argstr))
+                    (max (impc:ti:maximize-generic-type base)))
+               ;; if base does not exist as a
+               ;; (println 'base base 'p p 'argstr argstr 'args args)               
+               (if (not (or (impc:ti:namedtype-exists? (car p))
+                            (impc:ti:generictype-exists? (car p))
+                            (and (not (null? args))
+                                 (string=? (car p) (car args)))))
+                   (impc:compiler:print-compiler-error "Bad type in context" base))
+               ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+               ;; just here as a print check
+               ;; (if (not (string-contains? argstr "!")) ;; if no bangs present we can reify
+               ;;     (println "I *think* I'm a reified type!" p " with:" argstr " tup:" tup 'max: max 'st: string-type))
+               ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+               ;; (println 'bingo----> p) 
+               ;; I want the follow two lines but ... :(
+               (if (not (string-contains? argstr "!")) ;; I don't what this one :( I want the next two :)
+               ;; (if (and (not (string-contains? argstr "!")) ;; if no bangs present we can reify
+               ;;          (not (regex:match? argstr "[A-Za-z0-9]*(\\}|\\>)")))
                    (set! res (apply string-append "%" (car p) "_poly_"
                                     (cname-encode argstr)
                                     ; (string-append "<" argstr ">"))
                                     (make-list ptr-depth "*")))
                    (let ((max (impc:ti:maximize-generic-type base)))
+                     ;; (println 'MAX: max '-> base)
                      (set! max (apply string-append max (make-list ptr-depth "*")))
-                     (set! res (impc:ir:get-type-from-pretty-str max))))
+                     (set! res (apply impc:ir:get-type-from-pretty-str-rec max (cons (car p) args)))))
+               ;; (println 'res: res 'base: base)
                (if (string? res)
-                   (impc:ir:get-type-from-pretty-str res)
+                   (apply impc:ir:get-type-from-pretty-str-rec res (cons (car p) args))
                    res)))
-            ((and (char=? (string-ref base 0) #\%)
-                  (impc:ti:namedtype-exists? base))
+            ((or (and (char=? (string-ref base 0) #\%)
+                      (impc:ti:namedtype-exists? base))
+                 (and (char=? (string-ref base 0) #\%)
+                      (not (null? args))
+                      (string=? (car args) base)))
              string-type)
             ((char=? (string-ref base 0) #\%)
+             ;; (println 'doingit! base 'args: args)
+             ;; (if (not (impc:ti:namedtype-exists? base))
+             ;;     (begin (println 'adding 'base base 'as 'opaque)
+             ;;            (llvm:compile-ir (string-append base " = type opaque"))))
              (let* ((name1 (substring base 1 (string-length base)))
                     (p1 (regex:type-split name1 "_poly_"))
                     (name (car p1))
                     (encoding (cadr p1))
-                    (t1a (cname-decode encoding))
-                    (t1 (if (impc:ti:generictype-exists? name)
-                            (cadr (impc:ti:split-namedtype
-                                   (impc:ti:maximize-generic-type
-                                    (string-append name "{" (substring t1a 1 (- (string-length t1a) 1)) "}"))))
-                            t1a))
+                    (t1aa (cname-decode encoding))
+                    (t1a (string-append
+                           "<" (string-join
+                                (map (lambda (x)
+                                       ;; (println 'testx: x (string-append "^" (car p1) "\\{"))
+                                       (if (regex:match? x (string-append "^" (car p1) "\\{"))
+                                           (impc:ir:get-type-from-pretty-str x)
+                                           x))
+                                     (impc:ir:get-pretty-tuple-arg-strings t1aa))
+                                ",")
+                           ">"))
+                    ;; (ll (println 't1aa: t1aa))
+                    (t1b (if (impc:ti:generictype-exists? name)
+                             (cadr (impc:ti:split-namedtype
+                                    (impc:ti:maximize-generic-type
+                                     (string-append name "{" (substring t1a 1 (- (string-length t1a) 1)) "}"))))
+                             t1a))
+                    ;; (t1 (regex:replace-all t1b (string-append name "(?!_)") base))
+                    (t1 (regex:replace-all t1b (string-append name "([*\\]>,])") (string-append base "$1")))
+                    ;; (llllllll (println 'encoding encoding 't1a t1a 't1aa t1aa 't1b t1b 't1 t1))
                     (t2 (impc:ir:get-pretty-tuple-arg-strings t1))
+                    ;; (llllllllll (println 't2 t2))
                     (t3 (map (lambda (k)
+                               ;; (println 'k: k (impc:ir:get-base-type k) 'name name 'name1 name1)
                                (if (string=? (impc:ir:get-base-type k) name)
                                    (string-append "%" name1
                                                   (make-string (impc:ir:get-ptr-depth k) #\*))
-                                   (impc:ir:get-type-str (impc:ir:get-type-from-pretty-str k))))
+                                   (impc:ir:get-type-str (apply impc:ir:get-type-from-pretty-str-rec k (cons base args)))))
                              t2))
                     (t4 (string-append "{ " (string-join t3 ", ") " }"))
+                    ;; (t5 (map (lambda (k) (impc:ir:get-type-from-str k)) t3))
                     (type t4))
-               ;; (println 'name1 name1 't1a t1a 't1 t1 't2 t2)
-               (if (impc:ir:get-type-from-pretty-str t1)
-                   (begin
+               ;; (println 'name1 name1 't1 t1 't2 t2 't3 t3 't4 t4 'type type)
                      ;; (println 'make-new-type: (string-append "%" name1 " = type " type))
+                     ;; (llvm:compile-ir (string-append "%" name1 " = type " type))
                      (if (llvm:compile-ir (string-append "%" name1 " = type " type))
                          (impc:ti:register-new-namedtype name1 (impc:ir:get-type-from-str type) "")
                          (impc:compiler:print-compiler-error "could not compile new type" (cons name type)))
                      (if *impc:ir:get-type-callback-off*
                          (impc:ti:compile-type-dataconstructors (string->symbol name1) type #f #t #t)
                          (callback (now) 'impc:ti:compile-type-dataconstructors (string->symbol name1) type #f #t #t))
-                     string-type)
-                   (error ""))))
+                     string-type))
+                   ;; (error ""))))
             ((impc:ti:bang-type? base) (string->symbol base))
             ((or (impc:ti:get-generictype-candidate-types base)
                  (impc:ti:get-generictype-candidate-types (car (regex:split base "%"))))
-             (let* ((sb (regex:split base "%"))
+             ;; (println 'gen_chk_with_args: args)
+             (let* ((recursive-type (if (and (not (null? args)) (atom? (car args))) (car args) #f))
+                    (type-pairs (if (and (not (null? args)) (pair? (car args)))
+                                    args
+                                    (cl:find-if list? args)))
+                                        ;(is_args_assoc_list (if (null? args) #t (if (pair? (car args)) #t #f)))
+                    (sb (regex:split base "%"))
                     (base2 (car sb))
                     (extended (if (> (length sb) 1) (cadr sb) #f)))
+               ;; (println 'recursive-type recursive-type 'base2 base2 'type-pairs type-pairs)
                ;; (println 'args: args 'base2: base2 'st: string-type)
                ;; (println 'base2: (impc:ti:get-generictype-candidate-types base2))
-               (if (and (not (null? args))
-                        (atom? (car args))
-                        (string=? (car args) base2))
+               (if (and recursive-type (string=? recursive-type base2) (not type-pairs))
+                   ;(and (not (null? args))
+                   ;     (atom? (car args))
+                   ;     (string=? (car args) base2))
                    (string->symbol string-type)
-                   (let* ((type (impc:ir:get-type-from-pretty-str
-                                 (impc:ir:pointer++ (symbol->string (impc:ti:get-generictype-candidate-types base2))
-                                                    ptr-depth)
-                                 base2)))
+                   (let* (;(type (apply impc:ir:get-type-from-pretty-str-rec
+                          ;       (impc:ir:pointer++ (symbol->string (impc:ti:get-generictype-candidate-types base2))
+                          ;                          ptr-depth)
+                          ;       '())) ;(list base2 (if type-pairs type-pairs #f))))
+                          (type (impc:ir:pointer++ (cons *impc:ir:tuple*
+                                                         (map string->symbol
+                                                              (impc:ir:get-pretty-tuple-arg-strings (symbol->string (impc:ti:get-generictype-candidate-types base2)))))
+                                                   ptr-depth)))
+
+                                 ;; (cons base2 args))))
+                     ;; (println 'type__: type) ; 't2: t2)
                      ;; if we have come from a defined generic type
                      ;; i.e. List:<!a,List*>
                      ;; then do a replace all on gvars
                      ;; (println 'type-pre: type)
-                     (if (and (not (null? args))
-                              (list? (car args))
-                              (string=? (caar args) base2))
+                     (if (and type-pairs (string=? (caar type-pairs) base2))
+                         ;; (and (not (null? args))
+                         ;;      (or (list? (car args))
+                         ;;          (pair? (car args)))
+                         ;;      (string=? (caar args) base2))
                          (let ((ptrs (map (lambda (k)
                                             (if (atom? k)
                                                 (impc:ir:get-ptr-depth (atom->string k))
@@ -497,8 +600,8 @@
                                                  (impc:ir:get-base-type (atom->string k))
                                                  k))
                                            type)))
-                           ;; (println '%%%%%%%%%%%%%%%%%%)
-                           ;;(println 'bases bases 'ptrs ptrs)
+                           ;; (println '%%%%%%%%%%%%%%%%%%: args)
+                           ;; (println 'bases bases 'ptrs ptrs)
                            ;; (println 'typea type)
                               (let ((replacements
                                      (map (lambda (x)
@@ -508,14 +611,16 @@
                                                            (regex:type-split a ":")))
                                                    (bp (if (not (string? b)) (list b)
                                                            (regex:type-split b ":")))
+                                                   ;; (lll (println 'ap ap 'bp bp))
                                                    (aa (if (= (length ap) 1)
                                                            (car ap)
-                                                           (impc:ir:get-type-from-pretty-str (cadr ap))))
+                                                           (impc:ir:get-type-from-pretty-str-rec (cadr ap))))
                                                    (bb (if (= (length bp) 1)
                                                            (car bp)
-                                                           (impc:ir:get-type-from-pretty-str (cadr bp)))))
+                                                           (impc:ir:get-type-from-pretty-str-rec (cadr bp)))))
                                               (cons aa bb)))
-                                          (cadar args))))
+                                          (if type-pairs type-pairs '())))) ;(cdr args)))) ;(cdr args))))
+                                          ;(cadar args))))
                                 (set! type (replace-all bases replacements))) ;;(cadar args)))
                               ;; (set! type (replace-all bases (cadar args)))
                            ;; (println 'typeb type)
@@ -649,7 +754,7 @@
             ((string=? base "vector") (+ *impc:ir:vector* offset))
                                         ;((regex:match? base "\\<\\{\\s?i8\\*,\\s?i8\\*.*")
             ((and (regex:match? base "^\\<.* x .*\\>\\**$")
-                  (not (regex:match? base ",")))
+                  (not (string-contains? base ",")))
              (cons (+ offset *impc:ir:vector*) (impc:ir:get-vector-type-from-str string-type)))
             ((regex:match? base "^\\{\\s?i8\\*,\\s?i8\\*.*$")
              (cons (+ offset *impc:ir:closure*) (impc:ir:get-closure-type-from-str string-type)))
@@ -660,13 +765,14 @@
             ((regex:match? base "^\\[.*x.*\\]\\**$")
              (cons (+ offset *impc:ir:array*) (impc:ir:get-array-type-from-str string-type)))
             ((char=? (string-ref base 0) #\%)
-             (if (impc:ti:namedtype-exists? (substring base 1 (string-length base)))
-                 string-type
-                 (if (regex:match? string-type "_poly_")
-                     (if (impc:ti:spec-new-type? string-type)
-                         string-type
-                         (impc:compiler:print-bad-type-error string-type "Poly type not yet instantiated??"))
-                     (impc:compiler:print-bad-type-error string-type "Named Type Does not EXisT!"))))
+             string-type)
+             ;; (if (impc:ti:namedtype-exists? (substring base 1 (string-length base)))
+             ;;     string-type
+             ;;     (if (string-contains? string-type "_poly_")
+             ;;         (if (impc:ti:spec-new-type? string-type)
+             ;;             string-type
+             ;;             (impc:compiler:print-bad-type-error string-type "Poly type not yet instantiated??"))
+             ;;         (impc:compiler:print-bad-type-error string-type "Named Type Does not EXisT!"))))
             ((assoc-strcmp (string->symbol string-type) *impc:ti:generic-type-mappings*)
              (impc:ir:get-type-from-str (cdr (assoc-strcmp (string->symbol string-type) *impc:ti:generic-type-mappings*))))
             ;; ((regex:match? string-type "##") string-type)
@@ -770,8 +876,9 @@
            (apply max (map (lambda (tt)
                              (impc:ir:get-alignment tt))
                            (cdr t))))
+          ;; (else (impc:ir:get-type-size t)))))
           (else ;; under MCJIT i64 appears to be 4-byte aligned, not
-                ;; 8-byte aligned. WTF?
+           ;; 8-byte aligned. WTF?
            (if (= t 2) 4 (impc:ir:get-type-size t))))))
 
 
@@ -890,7 +997,9 @@
             (impc:ir:type? (impc:ir:get-type-from-str type)))
         (cond ((null? type) #f)
               ((and (number? type)
-                    (< type 1001)) #t)
+                    ;; (or (< type 0) (< (modulo type *impc:ir:pointer*) *impc:ir:closure*)) ;; this should be true but is actually more trouble than it's worth at this stage
+                    (< type 1001))
+               #t)
               ((and (list? type)
                     (number? (car type))
                     (or (impc:ir:closure? type)
@@ -984,6 +1093,14 @@
           (if (string? t) #f
               (if (= (modulo t *impc:ir:pointer*) *impc:ir:closure*)
                   #t #f))))))
+
+(define impc:ir:complex-type?
+  (lambda (type)
+    (cond ((impc:ir:closure? type) #t)
+          ((impc:ir:tuple? type) #t)
+          ((impc:ir:array? type) #t)
+          ((impc:ir:vector? type) #t)
+          (else #f))))
 
 (define impc:ir:signed?
   (lambda (type)
@@ -2303,10 +2420,36 @@
 
 
 ;; THIS VERSION DOESN'T COPY ANYTHING!
+;; (define impc:ir:compiler:set!
+;;   (lambda (ast types)
+;;     (let* ((os (make-string 0))
+;;            (t (if (assoc-strcmp (cadr ast) types) (cdr (assoc-strcmp (cadr ast) types)) #f))
+;;            (s2 (if t
+;;                    (impc:ir:compiler (caddr ast) types t)
+;;                    (impc:ir:compiler (caddr ast) types)))
+;;            (vv (impc:ir:gname))
+;;            (type (impc:ir:get-type-from-str (cadr vv))))
+;;       (emit "; do set!\n" os)
+;;       (emit s2 os)
+;;       (if (impc:ti:globalvar-exists? (symbol->string (cadr ast))) ;; are we are setting a global variable?
+;;           (emit (string-append "store " (cadr vv) " " (car vv) ", " (cadr vv) "* @"
+;;                                (symbol->string (cadr ast)) "\n") os)
+;;           (if (member (cadr ast) *impc:ir:sym-name-stack*)
+;;               (emit (string-append "store " (cadr vv) " " (car vv) ", " (cadr vv) "* %"
+;;                                    (symbol->string (cadr ast)) "Ptr\n") os)
+;;               (impc:compiler:print-missing-identifier-error (cadr ast) 'variable)))
+;;       ;; ir:gname should be vv
+;;       (impc:ir:strip-space os))))
+
 (define impc:ir:compiler:set!
   (lambda (ast types)
-    (let* ((os (make-string 0))
-           (t (if (assoc-strcmp (cadr ast) types) (cdr (assoc-strcmp (cadr ast) types)) #f))
+    (let* ((os (make-string 0))           
+           (global? (impc:ti:globalvar-exists? (symbol->string (cadr ast)))) ;; are we are setting a global variable?
+           (gtype (if global? (impc:ir:pointer-- (impc:ti:get-globalvar-type (symbol->string (cadr ast)))) #f))
+           (t (if global? gtype
+                  (if (assoc-strcmp (cadr ast) types)
+                      (cdr (assoc-strcmp (cadr ast) types))
+                      #f)))
            (s2 (if t
                    (impc:ir:compiler (caddr ast) types t)
                    (impc:ir:compiler (caddr ast) types)))
@@ -2314,7 +2457,7 @@
            (type (impc:ir:get-type-from-str (cadr vv))))
       (emit "; do set!\n" os)
       (emit s2 os)
-      (if (impc:ti:globalvar-exists? (symbol->string (cadr ast))) ;; are we are setting a global variable?
+      (if global? ;; (impc:ti:globalvar-exists? (symbol->string (cadr ast))) ;; are we are setting a global variable?
           (emit (string-append "store " (cadr vv) " " (car vv) ", " (cadr vv) "* @"
                                (symbol->string (cadr ast)) "\n") os)
           (if (member (cadr ast) *impc:ir:sym-name-stack*)
@@ -2377,6 +2520,9 @@
           (impc:compiler:print-bad-type-error-with-ast (impc:ir:get-type-str t) "array index must be an integer" ast))
       (if (and (integer? (caddr ast)) (> (+ 1 (caddr ast)) (cadr ttype)))
           (impc:compiler:print-index-oob-error 'array ast))
+      (if (and (not (impc:ir:pointer? ttype))
+               (not (number? (caddr ast))))
+          (impc:compiler:print-compiler-error "Value Arrays can only be accessed by literal integer offets.  You could try using an array reference instead?" ast))
       (emit index-str os)
       (emit var-str os)
       (emit "; array ref\n" os)
@@ -2723,7 +2869,42 @@
                            ">") os)
       (impc:ir:strip-space os))))
 
+(define impc:ir:compiler:num-of-elts
+  (lambda (ast types)
+    (let* ((t (assoc-strcmp (cadr ast) types)))
+      (if (or (null? t)
+              (and (not (impc:ir:array? (cdr t)))
+                   (not (impc:ir:vector? (cdr t)))))
+          (impc:compiler:print-compiler-error "num-of-elts must take a variable of array or vector type not: " (cdr ast)))
+      (impc:ir:gname (number->string (cadr (cdr t))) "i64")
+      "")))
 
+;; returns the size of the object (first argument)
+;; optional second argument is a dereference object 
+;; which should be an number starting at 0 (for no dereference) and increasing for each level of dereference...
+;; returns the size as an i64
+(define impc:ir:compiler:obj-size
+  (lambda (ast types)
+    (let* ((d (if (null? (cddr ast)) 0 (caddr ast)))
+           (t (assoc-strcmp (cadr ast) types)))
+       (if (null? t)
+            (impc:compiler:print-compiler-error "first argument to obj-size must be a valid variable"))
+       (if (not (integer? d))
+            (impc:compiler:print-compiler-error "second argument to obj-size must be an integer number of dereferences"))
+       (if (= d 0)
+           (impc:ir:gname (number->string (impc:ir:get-type-size (cdr t))) "i64")
+           (impc:ir:gname (number->string (impc:ir:get-type-size (impc:ir:pointer-- (cdr t) d))) "i64"))
+       "")))
+
+(define impc:ir:compiler:ref
+  (lambda (ast types)
+    (let* ((t (assoc-strcmp (cadr ast) types)))
+      (if (null? t)
+          (impc:compiler:print-compiler-error "single argument to ref must be a valid variable"))
+      (impc:ir:gname (string-append (symbol->string (cadr ast)) "Ptr")
+                     (string-append "%" (symbol->string (cadr ast)) "Ptr")
+                     (impc:ir:get-type-str (impc:ir:pointer++ (cdr t))))
+      "")))
 
 (define impc:ir:compiler:zone-alloc-without-size
   (lambda (ast types hint?)
@@ -3024,13 +3205,14 @@
 ;; indexing into structures is limited to i32 indexes!!
 (define impc:ir:compiler:tuple-set
   (lambda (ast types)
+    ;; (println 'ast ast 'type types)
     ;; arg 1 for tuples must be a symbol
     ;; arg 2 for tuples must be a number
     ;; this should make it easy for us!
     (let* ((os (make-string 0))
            (var-str (impc:ir:compiler (cadr ast) types))
            (var (impc:ir:gname))
-                                        ;(tuple-type (impc:ir:get-type-from-str (cadr var)))
+           ;;(tuple-type (impc:ir:get-type-from-str (cadr var)))
            (tuple-type (or (impc:ti:get-namedtype-type (cadr var))
                            (impc:ir:get-type-from-str (cadr var))))
            (element-type (list-ref (cdr tuple-type) (caddr ast)))
@@ -3038,7 +3220,7 @@
            (idx (impc:ir:gname))
            (val-str (impc:ir:compiler (cadddr ast) types element-type))
            (val (impc:ir:gname)))
-                                        ;(println 'var: var 'idx: idx 'val: val 'elementtype: element-type)
+      ;;(println 'var: var 'idx: idx 'val: val 'elementtype: element-type)
       ;; type tests
       (if (not (impc:ir:tuple? (impc:ir:get-type-from-str (cadr var))))
           (impc:compiler:print-bad-type-error-with-ast (cadr var) "tuple must be a pointer" ast))
@@ -3049,7 +3231,9 @@
       ;; ;; i.e. check to see if a given 'named type' is equivelent to the
       ;; ;; requied tuple type (of vica-versa) if it is we will need to bitcast.
       (if (not (impc:ir:types-equal? element-type (cadr val)))
-          (impc:compiler:print-type-conflict-error (cadr val) (caddr ast) ast))
+          (impc:compiler:print-type-conflict-error (impc:ir:pretty-print-type element-type)
+                                                   (impc:ir:pretty-print-type (cadr val))
+                                                   ast))
       ;; type tests done
       (emit index-str os)
       (emit var-str os)
@@ -3064,7 +3248,6 @@
                            (cadr var) " " (car var) ", i64 0, i32 " (car idx) "\n") os)
       (emit (string-append "store " (cadr val) " " (car val) ", "
                            (cadr (impc:ir:gname)) " " (car (impc:ir:gname)) "\n") os)
-
       (impc:ir:gname "val" (car val) (cadr val))
       (impc:ir:strip-space os))))
 
@@ -3102,13 +3285,13 @@
                              (impc:ir:gname)))
                      (cdr ast)))
           (va (impc:ir:gname "val" "i32")))
-      (cond ((equal? (car ast) 'llvm_printf)
+      (cond ((equal? (car ast) 'printf)
              (if (<> (impc:ir:get-type-from-str (car (cdr (cdr (car args)))))
                      (impc:ir:pointer++ *impc:ir:si8*))
                  (impc:compiler:print-bad-type-error-with-ast
                   (impc:ir:get-type-from-str (car (cdr (cdr (car args)))))
                   "first argument must be a format string" ast)))
-            ((member (car ast) '(llvm_fprintf llvm_fscanf))
+            ((member (car ast) '(fprintf fscanf))
              (if (<> (impc:ir:get-type-from-str (car (cdr (cdr (car args)))))
                      (impc:ir:pointer++ *impc:ir:si8*))
                  (impc:compiler:print-bad-type-error-with-ast
@@ -3119,7 +3302,7 @@
                  (impc:compiler:print-bad-type-error-with-ast
                   (impc:ir:get-type-from-str (car (cdr (cdr (cadr args)))))
                   "second argument must be a format string" ast)))
-            ((member (car ast) '(llvm_sprintf llvm_sscanf))
+            ((member (car ast) '(sprintf sscanf))
              (if (<> (impc:ir:get-type-from-str (car (cdr (cdr (car args)))))
                      (impc:ir:pointer++ *impc:ir:si8*))
                  (impc:compiler:print-bad-type-error-with-ast
@@ -3131,7 +3314,7 @@
                   (impc:ir:get-type-from-str (car (cdr (cdr (cadr args)))))
                   "second argument must be a format string" ast)))
             (else (impc:compiler:print-bad-type-error "" "Bad VARARGS func!")))
-      (if (equal? (car ast) 'llvm_printf)
+      (if (equal? (car ast) 'printf)
           (string-append (apply string-append (map (lambda (a) (car a)) args))
                          "\n" va " = call i32 (i8*, ...) @printf("
                          (caddr (car args)) " " (cadr (car args))
@@ -3143,7 +3326,7 @@
                          ")\n")
           (string-append (apply string-append (map (lambda (a) (car a)) args))
                          "\n" va " = call i32 (i8*,i8*, ...) @"
-                         (substring (symbol->string (car ast)) 5) "("
+                         (symbol->string (car ast)) "("
                          (caddr (car args)) " " (cadr (car args)) ", "
                          (caddr (cadr args)) " " (cadr (cadr args))
                          (apply string-append (map (lambda (a)
@@ -3452,7 +3635,6 @@
         ;; 	  (emit (impc:ir:gname "olddat" "i8*") " = bitcast " (cadr (impc:ir:gname "oldvect")) " " (car (impc:ir:gname "oldvect")) " to i8*\n" os)
         ;; 	  (emit "call i8* @memcpy(i8* " (car (impc:ir:gname "newdat")) ", i8* " (car (impc:ir:gname "olddat")) ", i64 " (number->string zallocsize) ")\n" os)
         ;; 	  (emit (impc:ir:gname "newvect" (string-append (cadr mathval) "*")) " = bitcast i8* " (car (impc:ir:gname "newdat")) " to " (string-append (cadr mathval) "*") "\n" os)))
-
         (impc:ir:strip-space os)))))
 
 
@@ -3716,7 +3898,6 @@
     (let* ((os (make-string 0))
            (timestr (impc:ir:compiler (cadr ast) types))
            (time (impc:ir:gname))
-                                        ;(farg '())
            (fname (symbol->string (caddr ast)))
            (ftypes (if (assoc-strcmp (caddr ast) types)
                        (map (lambda (a) (impc:ir:get-type-str a)) (cddr (assoc-strcmp (caddr ast) types)))
@@ -3724,19 +3905,21 @@
            (callback_func_name_str (impc:ir:compiler (string-append fname "_callback") types))
            (callback_func_name (impc:ir:gname))
            (closure_db_call (llvm:get-function (string-append fname "_callback")))
-           (astargs (cdddr ast))
+           (cbzonestr (impc:ir:compiler (cadddr ast) types))
+           (cbzone (impc:ir:gname))
+           (astargs (cddddr ast))
            (args (map (lambda (a hint)
                         (cons (impc:ir:compiler a types (impc:ir:get-type-from-str hint)) (impc:ir:gname)))
                       astargs
                       (cdr ftypes)))
-           (struct_type1 (string-append "{ void(i8*)*, i8*}*"))
+           (struct_type1 (string-append "{ void(i8*, %mzone*)*, i8*, %mzone*}*"))
            (struct_type2 (if (null? args)
                              ""
                              (string-append "{ " (cadr (cdr (car args)))
                                             (apply string-append  ;; void ptr first to hold "_callback" function
                                                    (map (lambda (a) (string-append ", " (cadr (cdr a)))) (cdr args)))
                                             "}*")))
-           (total_size1 (* (/ (sys:pointer-size) 8) 2))
+           (total_size1 (* (/ (sys:pointer-size) 8) 3))
            ;; this is the last usage of impc:ir:get-type-size in llvmir.xtm - need to get rid of it as well
            (total_size2 (apply + (map (lambda (a) (impc:ir:get-type-size (cadr (cdr a)))) args))))
       (if (not (impc:ir:fixed-point? (cadr time)))
@@ -3757,9 +3940,10 @@
       (emit callback_func_name_str os)
 
       (emit (impc:ir:gname "funcptr_ptr" "i8*") " = call ccc i8* @llvm_get_function_ptr(i8* " (car callback_func_name) ")\n" os)
-      (emit (impc:ir:gname "funcptr" "void(i8*)*") " = bitcast i8* " (car (impc:ir:gname "funcptr_ptr")) " to void(i8*)*\n" os)
+      (emit (impc:ir:gname "funcptr" "void(i8*, %mzone*)*") " = bitcast i8* " (car (impc:ir:gname "funcptr_ptr")) " to void(i8*, %mzone*)*\n" os)
+          
+      (emit cbzonestr os)
 
-                                        ;(set! farg (cons "" (impc:ir:gname "funcptr")))
       (emit (apply string-append (map (lambda (a n)
                                         (string-append (car a)
                                                        (impc:ir:gname "ptr" (string-append (cadr (cdr a)) "*")) " = getelementptr "
@@ -3771,8 +3955,8 @@
                                       (make-list-with-proc (length args) (lambda (i) i))))
             os)
 
-      ;; now add both {fptr and struct2} to struct1
-      (emit (impc:ir:gname "ptr" "void(i8*)**") " = getelementptr " (impc:ir:pointer-- struct_type1) ", " struct_type1 " "
+      ;; now add both {fptr, struct2 and the mzone} to struct1
+      (emit (impc:ir:gname "ptr" "void(i8*, %mzone*)**") " = getelementptr " (impc:ir:pointer-- struct_type1) ", " struct_type1 " "
             (car (impc:ir:gname "struct1_")) ", i32 0, i32 0\n"
             "store " (cadr (impc:ir:gname "funcptr")) " " (car (impc:ir:gname "funcptr")) ", "
             (cadr (impc:ir:gname "ptr")) " " (car (impc:ir:gname "ptr")) "\n"
@@ -3780,6 +3964,11 @@
       (emit (impc:ir:gname "ptr" "i8**") " = getelementptr " (impc:ir:pointer-- struct_type1) ", "  struct_type1 " "
             (car (impc:ir:gname "struct1_")) ", i32 0, i32 1\n"
             "store " (cadr (impc:ir:gname "dat2_")) " " (car (impc:ir:gname "dat2_")) ", "
+            (cadr (impc:ir:gname "ptr")) " " (car (impc:ir:gname "ptr")) "\n"
+            os)
+      (emit (impc:ir:gname "ptr" "%mzone**") " = getelementptr " (impc:ir:pointer-- struct_type1) ", "  struct_type1 " "
+            (car (impc:ir:gname "struct1_")) ", i32 0, i32 2\n"
+            "store " (cadr cbzone) " " (car cbzone) ", "
             (cadr (impc:ir:gname "ptr")) " " (car (impc:ir:gname "ptr")) "\n"
             os)
 
@@ -4081,6 +4270,12 @@
                     (impc:ir:compiler:heap-alloc ast types hint?))
                    ((equal? (car ast) 'stack-alloc)
                     (impc:ir:compiler:stack-alloc ast types hint?))
+                   ((equal? (car ast) 'num-of-elts)
+                    (impc:ir:compiler:num-of-elts ast types))
+                   ((equal? (car ast) 'obj-size)
+                    (impc:ir:compiler:obj-size ast types))
+                   ((equal? (car ast) 'ref)
+                    (impc:ir:compiler:ref ast types))
                    ((equal? (car ast) 'make-tuple)
                     (impc:ir:compiler:make-tuple ast types hint?))
                    ((equal? (car ast) 'tuple-ref)
@@ -4134,7 +4329,7 @@
                    ((and (symbol? (car ast))
                          (or (impc:ti:nativefunc-exists? (symbol->string (car ast)))
                              (impc:ti:closure-exists? (symbol->string (car ast)))))
-                    (if (member (car ast) '(llvm_printf llvm_fprintf llvm_sprintf llvm_sscanf llvm_fscanf))
+                    (if (member (car ast) '(printf fprintf sprintf sscanf fscanf))
                         (impc:ir:compiler:llvm_varargs ast types)
                         (impc:ir:compiler:native-call ast types)))
                    ((equal? (car ast) 'ret->) ;; return from function

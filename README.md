@@ -16,13 +16,18 @@ it and run `extempore.exe` from inside the `extempore` folder.
 ## Build from source
 
 This will download and build all the dependencies you need (including
-LLVM). So, if you've got a C++ compiler, git and CMake, here are some
-one-liner build commands:
+LLVM). So, if you've got a C++ compiler (for `gcc`, version 4.9 or
+later is required), git and CMake, here are some one-liner build
+commands:
 
 On **Linux/OSX**:
 
-    git clone https://github.com/digego/extempore && mkdir extempore/cmake-build && cd extempore/cmake-build && cmake .. && make install
+    git clone https://github.com/digego/extempore && mkdir extempore/cmake-build && cd extempore/cmake-build && cmake .. && make && sudo make install
+    
+On **Linux/OSX with JACK**:
 
+    git clone https://github.com/digego/extempore && mkdir extempore/cmake-build && cd extempore/cmake-build && cmake -DJACK=ON .. && make && sudo make install
+    
 On **Windows**:
 
     git clone https://github.com/digego/extempore && mkdir extempore/cmake-build && cd extempore/cmake-build && cmake -G"Visual Studio 14 2015 Win64" .. && cmake --build . --target ALL_BUILD --config Release
@@ -49,7 +54,7 @@ You can also join the Extempore community:
 
 # Licence
 
-Copyright (c) 2011-2016, Andrew Sorensen
+Copyright (c) 2011-2017, Andrew Sorensen
 
 All rights reserved.
 

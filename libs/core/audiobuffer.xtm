@@ -39,7 +39,7 @@
 (bind-func AudioBuffer
   (lambda (frames chans)
     (let ((dat:SAMPLE* (alloc (* frames chans))))
-      (AudioBuffer_z (String "") 0 frames chans dat (convert (llvm_samplerate)) 0 0))))
+      (AudioBuffer_z (String "") 0 frames chans dat (convert SAMPLE_RATE) 0 0))))
 
 (bind-func AudioBuffer
   (lambda (frames chans samplerate)
@@ -237,6 +237,15 @@
   (lambda (ab:AudioBuffer* frame chan)
     (pref-ptr (AudioBuffer_data ab)
               (+ (* frame (AudioBuffer_channels ab)) chan))))
+
+(bind-func playbuf
+  (lambda (ab:AudioBuffer* chan)
+    (AudioBuffer_read_looped ab chan)))
+
+(bind-func loopbuf
+  (lambda (ab:AudioBuffer* chan)
+    (AudioBuffer_read_looped ab chan)))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; reading audio files ;;

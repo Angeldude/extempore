@@ -100,15 +100,16 @@
 (bind-val SE SAMPLE 2.7182818284590452353602874713526624977572470936999595749669
           "e (base of natural log) of type SAMPLE")
 
-(bind-val SAMPLERATE SAMPLE (llvm_samplerate)
-  "audio sample rate")
-(bind-val SRs SAMPLE SAMPLERATE "audio sample rate")
-(bind-val SRf float SAMPLERATE "audio sample rate (float)")
-(bind-val SRd double SAMPLERATE "audio sample rate (double)")
-(bind-val SR i64 SAMPLERATE) "audio sample rate (i64)"
-(bind-val CHANNELS i64 (llvm_channels)) "number of audio output channels"
-(bind-val IN_CHANNELS i64 (llvm_in_channels)) "number of audio input channels"
-(bind-val FRAMES i64 (llvm_frames)) "audio signal chain block size"
+(bind-ext-val SAMPLE_RATE i32 "audio sample rate")
+(bind-val SAMPLERATE SAMPLE SAMPLE_RATE "audio sample rate")
+(bind-val SRs SAMPLE SAMPLE_RATE "audio sample rate")
+(bind-val SRf float SAMPLE_RATE "audio sample rate (float)")
+(bind-val SRd double SAMPLE_RATE "audio sample rate (double)")
+(bind-val SR i64 SAMPLE_RATE "audio sample rate (i64)")
+(bind-ext-val CHANNELS i32 "number of audio output channels")
+(bind-ext-val IN_CHANNELS i32 "number of audio input channels")
+(bind-ext-val NUM_FRAMES i32 "audio signal chain block size")
+(bind-val FRAMES i64 NUM_FRAMES "audio signal chain block size")
 
 ;; IEEE floating point NaNs
 
@@ -151,6 +152,9 @@
   (lambda (x:i8) (printf "%d" (convert x i32)) void))
 
 (bind-func print
+  (lambda (x:i16) (printf "%d" (convert x i32)) void))
+
+(bind-func print
   (lambda (x:i32) (printf "%d" x) void))
 
 (bind-func print
@@ -161,6 +165,87 @@
 
 (bind-func print
   (lambda (x:double) (printf "%f" x) void))
+
+;; (bind-func print:[void,!a]* -> (lambda (r a) (t:vector? a))
+;;   (lambda (vec)
+;;     (printout "/" (vref vec 0))
+;;     (doloop (i (- (num-of-elts vec) 1))
+;;       (printout "," (vref vec (+ 1 i))))
+;;     (printout "/")
+;;     void))
+
+(bind-func print:[void,!a]* -> (lambda (r a)
+                                 (and (t:vector? a)
+                                      (not (t:pointer? a))))
+  (lambda (vec)
+    (let ((a1 (ref vec)))
+      (printout "/" (vref a1 0))
+      (doloop (i (- (num-of-elts a1) 1))
+        (printout "," (vref a1 (+ 1 i))))
+      (printout "/")
+      void)))
+
+(bind-func print:[void,!a]* -> (lambda (r a)
+                                 (and (t:vector? a)
+                                      (t:pointer? a)))
+  (lambda (vec)
+    (printout "/" (vref vec 0))
+    (doloop (i (- (num-of-elts vec) 1))
+      (printout "," (vref vec (+ 1 i))))
+    (printout "/")
+    void))
+
+
+(bind-func print:[void,!a]* -> (lambda (r a)
+                                 (and (t:array? a)
+                                      (not (t:pointer? a))))
+  (lambda (arr)
+    (let ((a1 (ref arr)))
+      (printout "|" (aref a1 0))
+      (doloop (i (- (num-of-elts a1) 1))
+        (printout "," (aref a1 (+ 1 i))))
+      (printout "|")
+      void)))
+
+(bind-func print:[void,!a]* -> (lambda (r a)
+                                 (and (t:array? a)
+                                      (t:pointer? a)))
+  (lambda (arr)
+    (printout "|" (aref arr 0))
+    (doloop (i (- (num-of-elts arr) 1))
+      (printout "," (aref arr (+ 1 i))))
+    (printout "|")
+    void))
+
+(bind-func print:[void,!a]* -> (lambda (r x) (and (t:tuple? x) (t:elts? x 1)))
+  (lambda (tup)
+    (printout "<" (tref tup 0) ">")
+    void))
+
+(bind-func print:[void,!a]* -> (lambda (r x) (and (t:tuple? x) (t:elts? x 2)))
+  (lambda (tup)
+    (printout "<" (tref tup 0) "," (tref tup 1) ">")
+    void))
+
+(bind-func print:[void,!a]* -> (lambda (r x) (and (t:tuple? x) (t:elts? x 3)))
+  (lambda (tup)
+    (printout "<" (tref tup 0) "," (tref tup 1) "," (tref tup 2) ">")    
+    void))
+
+(bind-func print:[void,!a]* -> (lambda (r x) (and (t:tuple? x) (t:elts? x 4)))
+  (lambda (tup)
+    (printout "<" (tref tup 0) "," (tref tup 1) "," (tref tup 2) "," (tref tup 3) ">")
+    void))
+
+(bind-func print:[void,!a]* -> (lambda (r x) (and (t:tuple? x) (t:elts? x 5)))
+  (lambda (tup)
+    (printout "<" (tref tup 0) "," (tref tup 1) "," (tref tup 2) "," (tref tup 3) "," (tref tup 4) ">")
+    void))
+
+(bind-func print:[void,!a]* -> (lambda (r x) (and (t:tuple? x) (t:elts? x 6)))
+  (lambda (tup)
+    (printout "<" (tref tup 0) "," (tref tup 1) "," (tref tup 2) "," (tref tup 3) "," (tref tup 4) "," (tref tup 4) ">")
+    void))
 
 (bind-func print:[void,!a]*
   "generic \"catch-all\" print"
@@ -251,6 +336,10 @@
  (get_native_name closure-name . type)
  (let* ((pair (regex:type-split (symbol->string closure-name) ":"))
         (base (if (null? (cdr pair)) "" (impc:ir:get-base-type (cadr pair)))))
+   ;; apply any aliases
+   (if (and (not (null? (cdr pair)))
+            (impc:ti:typealias-exists? base))
+       (set! base (impc:ir:get-base-type (impc:ir:pretty-print-type (impc:ti:get-typealias-type base)))))
    (set! closure-name (symbol->string closure-name))
    (if (not (null? (cdr pair)))
        (string-append (car pair) "_adhoc_" (cname-encode base) "_native")
@@ -333,45 +422,26 @@ into any further sexp arguments."
 (bind-poly random imp_rand2_d)
 
 ;;;;;;;;;;;;;;;;;;
-;; triginometry ;;
+;; trigonometry ;;
 ;;;;;;;;;;;;;;;;;;
 
-;; many of these are handled through llvm intrinsics these days
-
+(bind-poly tan tan)
 (bind-poly tan tanf)
-(bind-poly tan llvm_tan)
-(bind-poly cosh coshf)
-(bind-poly cosh llvm_cosh)
-(bind-poly tanh tanhf)
-(bind-poly tanh llvm_tanh)
-(bind-poly sinh sinhf)
-(bind-poly sinh llvm_sinh)
+
+(bind-poly acos acos)
+(bind-poly acos acosf)
+(bind-poly asin asin)
 (bind-poly asin asinf)
-(bind-poly asin llvm_asin)
+(bind-poly atan atan)
 (bind-poly atan atanf)
-(bind-poly atan llvm_atan)
+(bind-poly atan2 atan2)
 (bind-poly atan2 atan2f)
-(bind-poly atan2 llvm_atan2)
-;; (bind-poly ceil ceilf)
-;; (bind-poly ceil llvm_ceil)
-;; (bind-poly floor floorf)
-;; (bind-poly floor llvm_floor)
-;; (bind-poly exp expf)
-;; (bind-poly exp llvm_exp)
-;; (bind-poly fmod fmodf)
-;; (bind-poly fmod llvm_fmod)
-;; (bind-poly pow powf)
-;; (bind-poly pow llvm_pow)
-;; (bind-poly log logf)
-;; (bind-poly log llvm_log)
-;; (bind-poly log2 log2f)
-;; (bind-poly log2 llvm_log2)
-;; (bind-poly log10 log10f)
-;; (bind-poly log10 llvm_log10)
-;; (bind-poly sqrt sqrtf)
-;; (bind-poly sqrt llvm_sqrt)
-;; (bind-poly fabs fabsf)
-;; (bind-poly fabs llvm_fabs)
+(bind-poly cosh cosh)
+(bind-poly cosh coshf)
+(bind-poly sinh sinh)
+(bind-poly sinh sinhf)
+(bind-poly tanh tanh)
+(bind-poly tanh tanhf)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
@@ -436,12 +506,11 @@ into any further sexp arguments."
   "generic \"catch-all\" zcopy"
   (lambda (x fromz toz)
     (if (llvm_ptr_in_zone fromz (convert x))
-        (let ((size (llvm_zone_ptr_size (convert x)))
-              (newdat (convert (llvm_zone_malloc (llvm_peek_zone_stack) size))))
+        (let ((size (obj-size x 1)) ;; get size of x with 1 level of dereference
+              (newdat (convert (llvm_zone_malloc toz size))))
           (memcpy (convert newdat) (convert x) size)
           newdat)
         x)))
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; xtlang strings
@@ -624,7 +693,7 @@ If both strings are null an empty String will be returned
 ;; cat macro (poor-man's varargs)
 
 (bind-macro
-  "concatenate Strings"
+  "concatenate Strings or Symbols"
   (cat . args)
   (let loop ((rem (cdr args))
              (ret (car args)))
@@ -671,8 +740,8 @@ If both strings are null an empty String will be returned
           ;; column-major indexing closure
           (s1cstr (cstring s1))
           (s1len:size_t (length s1))
-          (s2cstr (cstring s1))
-          (s2len:size_t (length s1))
+          (s2cstr (cstring s2))
+          (s2len:size_t (length s2))
           (row:i64* (salloc (+ s1len 1)))
           (prev_row:i64* (salloc (+ s1len 1)))
           (min3 (lambda (a:i64 b c)
@@ -794,10 +863,18 @@ If both strings are null an empty String will be returned
 ;; otherwise expect poly override
 ;;
 ;; i.e. see string below
-(bind-func equal:[bool,!a,!b]*
+
+;; numbers are only equal if they are the same type
+(bind-func equal:[bool,!a,!a]* ;; -> (lambda (r a b) (and (equal? a b) (t:number? a)))
   "basic equality check"
   (lambda (a b)
     (= a b)))
+
+;; two different types cannot be equal!
+(bind-func equal:[bool,!a,!b]* ;; -> (lambda (r a b) (not (equal? a b)))
+  (lambda (a b)
+    #f))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;
 ;;
@@ -825,6 +902,12 @@ If both strings are null an empty String will be returned
 
 (bind-func format
   (lambda (x:i8)
+    (let ((str:i8* (salloc 256)))
+      (sprintf str "%d" x)
+      (String str))))
+
+(bind-func format
+  (lambda (x:i16)
     (let ((str:i8* (salloc 256)))
       (sprintf str "%d" x)
       (String str))))
@@ -875,6 +958,12 @@ If both strings are null an empty String will be returned
 
 (bind-func toString
   (lambda (x:i8)
+    (let ((s:i8* (salloc 256)))
+      (sprintf s "%d" x)
+      (String s))))
+
+(bind-func toString
+  (lambda (x:i16)
     (let ((s:i8* (salloc 256)))
       (sprintf s "%d" x)
       (String s))))
@@ -1045,6 +1134,26 @@ Use via the polymorphic Str function
   (lambda (s1:Symbol* s2:Symbol*)
     (if (= (strcmp (tref s1 1) (tref s2 1)) 0)
         1:i1 0:i1)))
+
+(bind-func cat2
+  "Concatenate 2 Symbols!
+
+If one symbol is null, the alternate symbol will be returned.
+If both symbols are null an empty symbol will be returned
+
+@param s1 - first string to be concatenated
+@param s2 - second string to be concatenated
+@return - pointer to new Symbol
+"
+  (lambda (s1:Symbol* s2:Symbol*)
+    (if (null? s2) (Symbol s1)
+        (if (null? s1) (Symbol s2)
+            (let ((size (+ (tref s1 0) (tref s2 0)))
+                  (news:i8* (zalloc (+ 1 size))))
+              (strcpy news (tref s1 1))
+              (strncat news (tref s2 1) size)
+              (Symbol news))))))
+
 
 (define *xtmlib-base-loaded* #t)
 

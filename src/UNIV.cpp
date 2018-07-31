@@ -62,13 +62,26 @@ enum Windows_Color_Convert
     Red     = FOREGROUND_RED,
     Green   = FOREGROUND_GREEN,
     Yellow  = FOREGROUND_RED   | FOREGROUND_GREEN | FOREGROUND_INTENSITY,
-    Blue    = FOREGROUND_BLUE,
+    Blue    = FOREGROUND_BLUE  | FOREGROUND_INTENSITY,
     Magenta = FOREGROUND_RED   | FOREGROUND_BLUE,
     Cyan    = FOREGROUND_GREEN | FOREGROUND_BLUE,
-    White   = FOREGROUND_RED   | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY,
+    White   = FOREGROUND_RED   | FOREGROUND_GREEN | FOREGROUND_BLUE | FOREGROUND_INTENSITY
+};
+
+enum Windows_BGColor_convert
+{
+    BGBlack   = 0,
+    BGRed     = BACKGROUND_RED,
+    BGGreen   = BACKGROUND_GREEN,
+    BGYellow  = BACKGROUND_RED   | BACKGROUND_GREEN | BACKGROUND_INTENSITY,
+    BGBlue    = BACKGROUND_BLUE,
+    BGMagenta = BACKGROUND_RED   | BACKGROUND_BLUE,
+    BGCyan    = BACKGROUND_GREEN | BACKGROUND_BLUE,
+    BGWhite   = BACKGROUND_RED   | BACKGROUND_GREEN | BACKGROUND_BLUE | BACKGROUND_INTENSITY,
 };
 
 int WINDOWS_COLORS[] = { Black, Red, Green, Yellow, Blue, Magenta, Cyan, White };
+int WINDOWS_BGCOLORS[] = { BGBlack, BGRed, BGGreen, BGYellow, BGBlue, BGMagenta, BGCyan, BGWhite };
 
 #endif
 
@@ -118,10 +131,8 @@ void base64_codesafe_cleanup() {
     free(base64_codesafe_decoding_table);
 }
 
-char* cname_encode(char *data,
-                    size_t input_length,
-                    size_t *output_length) {
-
+EXPORT char* cname_encode(char *data, size_t input_length, size_t *output_length)
+{
     *output_length = 4 * ((input_length + 2) / 3);
 
     //char *encoded_data = (char*) malloc(*output_length);
@@ -151,11 +162,8 @@ char* cname_encode(char *data,
     return encoded_data;
 }
 
-
-char* cname_decode(char *data,
-                   size_t input_length,
-                   size_t *output_length) {
-
+EXPORT char* cname_decode(char *data, size_t input_length, size_t *output_length)
+{
     if (base64_codesafe_decoding_table == NULL) base64_codesafe_build_decoding_table();
 
     char* d2 = NULL;
@@ -201,10 +209,8 @@ char* cname_decode(char *data,
     return decoded_data;
 }
 
-char* base64_encode(const unsigned char *data,
-                    size_t input_length,
-                    size_t *output_length) {
-
+EXPORT char* base64_encode(const unsigned char *data, size_t input_length, size_t *output_length)
+{
     *output_length = 4 * ((input_length + 2) / 3);
 
     char *encoded_data = (char*) malloc(*output_length+1);
@@ -233,10 +239,8 @@ char* base64_encode(const unsigned char *data,
 }
 
 
-unsigned char* base64_decode(const char *data,
-                             size_t input_length,
-                             size_t *output_length) {
-
+EXPORT unsigned char* base64_decode(const char *data, size_t input_length, size_t *output_length)
+{
     if (base64_std_decoding_table == NULL) base64_std_build_decoding_table();
 
     if (input_length % 4 != 0) return NULL;
@@ -556,7 +560,7 @@ namespace UNIV
 {
 
 std::string SHARE_DIR = std::string(EXT_SHARE_DIR);
-uint32_t FRAMES = 128;
+uint32_t NUM_FRAMES = 1024;
 uint32_t CHANNELS = 2;
 uint32_t IN_CHANNELS = 0;
 uint32_t SAMPLE_RATE = 44100;

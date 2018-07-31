@@ -405,26 +405,28 @@
 ;; sawtooth wave LFO with period 2pi
 
 (define-macro (ramp x)
-  `(let ((xmod2pi (- ,x (* TWOPI (floor (/ ,x TWOPI))))))
-     (* (/ 1.0 PI) (if (< xmod2pi PI) xmod2pi (- xmod2pi TWOPI)))))
+  `(let* ((xx (+ ,x 0.000000001))
+         (xmod2pi (- xx (* TWOPI (floor (/ xx TWOPI))))))
+     (* (/ 1.0 TWOPI) xmod2pi)))
+
 
 (macro (rampr args)
        (if (> (length args) 4)
-       `(+ ,(caddr args) (+ (* .5 ,(cadddr args)) (* .5 ,(cadddr args) (ramp (* TWOPI (+ beat ,(cadr args)) ,(car (cddddr args)))))))
-       `(+ ,(cadr args) (+ (* .5 ,(caddr args)) (* .5 ,(caddr args) (ramp (* TWOPI beat ,(cadddr args))))))))
+       `(+ ,(caddr args) (* ,(cadddr args) (ramp (* TWOPI (+ beat ,(cadr args)) ,(car (cddddr args))))))
+       `(+ ,(cadr args) (* ,(caddr args) (ramp (* TWOPI beat ,(cadddr args)))))))
 
 (define-macro (slide x)
   `(- 1.0 (ramp ,x)))
 
 (macro (slider args)
        (if (> (length args) 4)
-           `(+ ,(caddr args) (+ (* .5 ,(cadddr args)) (* .5 ,(cadddr args) (slide (* TWOPI (+ beat ,(cadr args)) ,(car (cddddr args)))))))
-           `(+ ,(cadr args) (+ (* .5 ,(caddr args)) (* .5 ,(caddr args) (slide (* TWOPI beat ,(cadddr args))))))))
+           `(+ ,(caddr args) (* ,(cadddr args) (slide (* TWOPI (+ beat ,(cadr args)) ,(car (cddddr args))))))
+           `(+ ,(cadr args) (* ,(caddr args) (slide (* TWOPI beat ,(cadddr args)))))))
 
 
 ;; square wave LFO with period 2pi
 
-(define-macro (rect x)  
+(define-macro (rect x)
   `(let ((xmod2pi (- ,x (* TWOPI (floor (/ ,x TWOPI))))))
      (if (< xmod2pi PI) 1.0 0.0)))
 
@@ -436,10 +438,10 @@
 ;; triangle wave LFO with period 2pi
 
 (define-macro (tri-wave x)
-  `(let ((xmod2pi (- ,x (* TWOPI (floor (/ ,x TWOPI))))))
-     (if (< xmod2pi PI)
-         (+ 1.0 (* (/ -1.0 PI) xmod2pi))
-         (- (* (/ 1.0 PI) xmod2pi) 1.0))))
+  `(let* ((xx (+ ,x 0.000000001))
+          (xmod2pi (- xx (* TWOPI (floor (/ xx TWOPI))))))
+     (* (/ 1.0 PI)
+        (if (< xmod2pi PI) xmod2pi (- TWOPI xmod2pi)))))
 
 (macro (trir args)
    (if (> (length args) 4)
@@ -1173,7 +1175,7 @@
              (sys:set-dspmt-wrapper (llvm:get-function-pointer "imp_dsp_sum_wrapper")
                                     (llvm:get-function-pointer "imp_dsp_wrapper"))
              (sys:set-dsp-closure (llvm:get-function-pointer (string-append nn "_getter")))
-             (dotimes (i (length args))                  
+             (dotimes (i (length args))
                (sys:set-dspmt-closure (llvm:get-function-pointer (string-append (list-ref args i) "_getter")) i))
              (sys:init-mt-audio (length args) zerolatency?)
              )
@@ -1192,7 +1194,7 @@
              (sys:set-dspmt-wrapper (llvm:get-function-pointer "imp_dspf_sum_wrapper")
                                     (llvm:get-function-pointer "imp_dspf_wrapper"))
              (sys:set-dsp-closure (llvm:get-function-pointer (string-append nn "_getter")))
-             (dotimes (i (length args))                  
+             (dotimes (i (length args))
                (sys:set-dspmt-closure (llvm:get-function-pointer (string-append (list-ref args i) "_getter")) i))
              (sys:init-mt-audio (length args) zerolatency?)
              )
@@ -1204,7 +1206,7 @@
              (sys:set-dspmt-wrapper-array (llvm:get-function-pointer "imp_dsp_sum_wrapper_array")
                                           (llvm:get-function-pointer "imp_dsp_wrapper_array"))
              (sys:set-dsp-closure (llvm:get-function-pointer (string-append nn "_getter")))
-             (dotimes (i (length args))                  
+             (dotimes (i (length args))
                (sys:set-dspmt-closure (llvm:get-function-pointer (string-append (list-ref args i) "_getter")) i))
              (sys:init-mt-audio-buf (length args) zerolatency?)
              )
@@ -1764,7 +1766,7 @@
                         (set! *sys:load-escape-stack* (cons k *sys:load-escape-stack*))
                         ""))))
             (if (string=? msg "")
-                (begin                  
+                (begin
                   (let loop ((sexpr (read input)))
                     (if (not (eof-object? sexpr))
                         (begin

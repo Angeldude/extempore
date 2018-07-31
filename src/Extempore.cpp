@@ -57,6 +57,37 @@
 #include <AppKit/AppKit.h>
 #endif
 
+#define SUBSUME_PRIMARY
+
+// main callback for use by XTLang code
+void (*XTMMainCallback)();
+
+extern "C" {
+  void xtm_set_main_callback( void(*f)() )
+  {
+    XTMMainCallback = f;
+    return;
+  }
+}
+
+int pass_primary_port = 7099; // lazy :(
+
+void* extempore_primary_repl_delayed_connect(void* dat)
+{
+    extemp::SchemeProcess* primary = (extemp::SchemeProcess*) dat;
+    std::string host("localhost");
+    std::string primary_name("primary");
+    int primary_port = pass_primary_port;
+#ifdef _WIN32
+	Sleep(1000);
+#else
+    sleep(1);
+#endif
+    extemp::SchemeREPL* primary_repl = new extemp::SchemeREPL(primary_name, primary);
+    primary_repl->connectToProcessAtHostname(host, primary_port);
+    return NULL;
+}
+
 // WARNING EVIL WINDOWS TERMINATION CODE!
 #ifdef _WIN32
 
@@ -163,7 +194,7 @@ int main(int argc, char** argv)
                 extemp::UNIV::SAMPLE_RATE = atoi(args.OptionArg());
                 break;
             case OPT_FRAMES:
-                extemp::UNIV::FRAMES = atoi(args.OptionArg());
+                extemp::UNIV::NUM_FRAMES = atoi(args.OptionArg());
                 break;
             case OPT_CHANNELS:
                 extemp::UNIV::CHANNELS = atoi(args.OptionArg());
@@ -200,9 +231,15 @@ int main(int argc, char** argv)
                 } else if (!strcmp(args.OptionArg(), "basic")) {
                     extemp::UNIV::EXT_TERM = 2;
                 } else if (!strcmp(args.OptionArg(), "nocolor")) {
-                    extemp::UNIV::EXT_TERM = 3;
+                  extemp::UNIV::EXT_TERM = 3;
+                } else if (!strcmp(args.OptionArg(), "ansi")) {
+                  extemp::UNIV::EXT_TERM = 0;
                 } else {
-                    extemp::UNIV::EXT_TERM = 0;
+#ifdef _WIN32
+                  extemp::UNIV::EXT_TERM = 1;
+#else                  
+                  extemp::UNIV::EXT_TERM = 0;
+#endif                  
                 }
                 break;
             case OPT_NO_AUDIO:
@@ -258,7 +295,7 @@ int main(int argc, char** argv)
                 std::cout << "         --runtime: [deprecated] use --sharedir instead" << std::endl;
                 std::cout << "           --nobase: don't load base lib on startup" << std::endl;
                 std::cout << "      --samplerate: audio samplerate" << std::endl;
-                std::cout << "          --frames: attempts to force frames [128]" << std::endl;
+                std::cout << "          --frames: attempts to force frames [1024]" << std::endl;
                 std::cout << "        --channels: attempts to force num of output audio channels" << std::endl;
                 std::cout << "      --inchannels: attempts to force num of input audio channels" << std::endl;
                 std::cout << "         --noaudio: no audio output: use a \"dummy\" device (overrides --device option)" << std::endl;
@@ -333,6 +370,11 @@ int main(int argc, char** argv)
 #endif
     }
     ascii_normal();
+#ifdef SUBSUME_PRIMARY
+    ascii_info();
+    std::cout << std::endl << "Primary on Thread 0" << std::endl;
+    ascii_normal();
+#endif    
     std::cout << "---------------------------------------" << std::endl;
     ascii_default();
     bool startup_ok = true;
@@ -340,8 +382,13 @@ int main(int argc, char** argv)
     startup_ok &= utility->start();
     extemp::SchemeREPL* utility_repl = new extemp::SchemeREPL(utility_name, utility);
     utility_repl->connectToProcessAtHostname(host, utility_port);
+
+#ifndef SUBSUME_PRIMARY // if not subsume primary (i.e. primary NOT on thread 0)
     primary = new extemp::SchemeProcess(extemp::UNIV::SHARE_DIR, primary_name, primary_port, 0, initexpr);
     startup_ok &= primary->start();
+    extemp::SchemeREPL* primary_repl = new extemp::SchemeREPL(primary_name, primary);
+    primary_repl->connectToProcessAtHostname(host, primary_port);
+    //std::cout << "primary started:" << std::endl << std::flush;    
     if (!startup_ok) {
         ascii_error();
         printf("Error");
@@ -350,18 +397,25 @@ int main(int argc, char** argv)
         fflush(NULL);
         exit(1);
     }
-    extemp::SchemeREPL* primary_repl = new extemp::SchemeREPL(primary_name, primary);
-    primary_repl->connectToProcessAtHostname(host, primary_port);
-#ifdef __APPLE__
-    [[NSApplication sharedApplication] run];
-#else
     while (true) {
+      if (XTMMainCallback) { XTMMainCallback(); }
 #ifdef _WIN32
-        Sleep(5000);
+      Sleep(2000);
+#elif __APPLE__
+      sleep(2);
 #else
-        sleep(5000);
+      sleep(2000);
 #endif
-    }
-#endif
+    }      
+#else
+    primary = new extemp::SchemeProcess(extemp::UNIV::SHARE_DIR, primary_name, primary_port, 0, initexpr);
+
+    // need to connect to primary from alternate thread (can be short lived simply puts repl on heap)
+    extemp::EXTThread* replthread = new extemp::EXTThread(extempore_primary_repl_delayed_connect,primary);
+    pass_primary_port = primary_port;
+    replthread->start();
+    // start the primary process running on this thread (i.e. process thread 0)
+    primary->start(true); // this will not return
+#endif // end SUBSUME_PRIMARY
     return 0;
 }

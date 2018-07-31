@@ -315,6 +315,30 @@
       (doloop (j neighbors)
         (pset! dest (+ (* neighbors i) j) (pref src (+ (* stride i) j)))))))
 
+(bind-func vcopy
+  (lambda (src:double* len:i64 dest:double*)
+    (doloop (i len)
+      (pset! dest i (pref src i)))
+    void))
+
+(bind-func vcopy
+  (lambda (src:float* len:i64 dest:float*)
+    (doloop (i len)
+      (pset! dest i (pref src i)))
+    void))
+
+(bind-func vcopy
+  (lambda (src:i64* len:i64 dest:i64*)
+    (doloop (i len)
+      (pset! dest i (pref src i)))
+    void))
+
+(bind-func vcopy
+  (lambda (src:i32* len:i64 dest:i32*)
+    (doloop (i len)
+      (pset! dest i (pref src i)))
+    void))
+
 (bind-func vnormalise
   (lambda (v1:float* len:i64 result:float*)
     (let ((mag 0.0)
@@ -510,49 +534,49 @@
 (bind-func mprint
   (lambda (m:float* nrows:i64 ncols:i64)
     (let ((i 0) (j 0))
-      (printf "[")
-      (dotimes (j nrows)
+      ;;(printf "[")
+      (dotimes (i nrows)
         (printf "[")
-        (dotimes (i ncols)
+        (dotimes (j ncols)
           (printf " %f" (ftod (pref m (rowmaj_idx_2D i j ncols)))))
-        (printf " ]"))
-      (printf "]")
+        (printf " ]\n"))
+      ;;(printf "]")
       void)))
 
 (bind-func mprint
   (lambda (m:double* nrows:i64 ncols:i64)
     (let ((i 0) (j 0))
-      (printf "[")
-      (dotimes (j nrows)
+      ;;(printf "[")
+      (dotimes (i nrows)
         (printf "[")
-        (dotimes (i ncols)
+        (dotimes (j ncols)
           (printf " %f" (pref m (rowmaj_idx_2D i j ncols))))
-        (printf " ]"))
-      (printf "]")
+        (printf " ]\n"))
+      ;;(printf "]")
       void)))
 
 (bind-func mprint
   (lambda (m:i32* nrows:i64 ncols:i64)
     (let ((i 0) (j 0))
-      (printf "[")
-      (dotimes (j nrows)
+      ;;(printf "[")
+      (dotimes (i nrows)
         (printf "[")
-        (dotimes (i ncols)
+        (dotimes (j ncols)
           (printf " %d" (pref m (rowmaj_idx_2D i j ncols))))
-        (printf " ]"))
-      (printf "]")
+        (printf " ]\n"))
+      ;;(printf "]")
       void)))
 
 (bind-func mprint
   (lambda (m:i64* nrows:i64 ncols:i64)
     (let ((i 0) (j 0))
-      (printf "[")
-      (dotimes (j nrows)
+      ;;(printf "[")
+      (dotimes (i nrows)
         (printf "[")
-        (dotimes (i ncols)
+        (dotimes (j ncols)
           (printf " %lld" (pref m (rowmaj_idx_2D i j ncols))))
-        (printf " ]"))
-      (printf "]")
+        (printf " ]\n"))
+      ;;(printf "]")
       void)))
 
 (bind-func mmmul
@@ -1108,501 +1132,59 @@ column-major (the same as OpenGL)
       j)))
 
 ;;;;;;;;;;;;;;
-;; Rational ;;
+;;
+;; v sphere ;;
+;;
 ;;;;;;;;;;;;;;
 
-;; xtlang's rational number type and helper functions
-
-(bind-type Rational <i64,i64> (printer? . #f))
-
-(bind-func Rat
-  (lambda (a b)
-    (if (< b 0)
-        (begin (set! a (* -1 a))
-               (set! b (* -1 b))))
-    (let ((r:Rational* (salloc)))
-      (tset! r 0 a)
-      (tset! r 1 b)
-      (pref r 0))))
-
-(bind-func Rational_greatest_common_divisor
-  (lambda (m:i64 n:i64)
-    (if (and (= m 0) (= n 0))
-        -1
-        (let ((r 0))
-          (if (< m 0) (set! m (* m -1)))
-          (if (< n 0) (set! n (* n -1)))
-          (while (not (= n 0))
-            (set! r (% m n))
-            (set! m n)
-            (set! n r))
-          m))))
-
-(bind-func Rational_reduce
-  (lambda (a:Rational)
-    (let ((gcd (Rational_greatest_common_divisor (tref a 0)
-                                            (tref a 1))))
-      (Rat (/ (tref a 0) gcd)
-           (/ (tref a 1) gcd)))))
-
-(bind-func print
-  (lambda (a:Rational)
-    (let ((reduced (Rational_reduce a)))
-      (printf "%lld/%lld" (tref reduced 0) (tref reduced 1))) void))
-
-;; conversion
-
-(bind-func rtod
-  (lambda (a:Rational)
-    (/ (i64tod (tref a 0)) (i64tod (tref a 1)))))
-
-(bind-func rtof
-  (lambda (a:Rational)
-    (/ (i64tof (tref a 0)) (i64tof (tref a 1)))))
-
-(bind-func rtoi64
-  (lambda (a:Rational)
-    (dtoi64 (rtod a))))
-
-(bind-func rtoi32
-  (lambda (a:Rational)
-    (dtoi32 (rtod a))))
-
-(bind-func rtoi16
-  (lambda (a:Rational)
-    (dtoi16 (rtod a))))
-
-(bind-func rtoi8
-  (lambda (a:Rational)
-    (dtoi8 (rtod a))))
-
-(bind-func rtoi1
-  (lambda (a:Rational)
-    (dtoi1 (rtod a))))
-
-;; rational multiplication
-
-(bind-func xtm_multiplication
-  (lambda (a:Rational b:Rational)
-    (Rational_reduce
-     (Rat (* (tref a 0) (tref b 0))
-          (* (tref a 1) (tref b 1))))))
-
-(bind-func xtm_multiplication
-  (lambda (a:Rational b:i64)
-    (Rat (* (tref a 0) b) (* (tref a 1) 1))))
-
-(bind-func xtm_multiplication
-  (lambda (b:i64 a:Rational)
-    (Rat (* (tref a 0) b) (* (tref a 1) 1))))
-
-(bind-func xtm_multiplication
-  (lambda (a:Rational b:i32)
-    (Rat (* (tref a 0) (i32toi64 b)) (* (tref a 1) 1))))
-
-(bind-func xtm_multiplication
-  (lambda (b:i32 a:Rational)
-    (Rat (* (tref a 0) (i32toi64 b)) (* (tref a 1) 1))))
-
-(bind-func xtm_multiplication
-  (lambda (a:Rational b:i8)
-    (Rat (* (tref a 0) (i8toi64 b)) (* (tref a 1) 1))))
-
-(bind-func xtm_multiplication
-  (lambda (b:i8 a:Rational)
-    (Rat (* (tref a 0) (i8toi64 b)) (* (tref a 1) 1))))
-
-(bind-func xtm_multiplication
-  (lambda (a:Rational b:i1)
-    (Rat (* (tref a 0) (i1toi64 b)) (* (tref a 1) 1))))
-
-(bind-func xtm_multiplication
-  (lambda (b:i1 a:Rational)
-    (Rat (* (tref a 0) (i1toi64 b)) (* (tref a 1) 1))))
-
-(bind-func xtm_multiplication
-  (lambda (a:Rational b:double)
-    (* b (/ (convert (tref a 0) double) (convert (tref a 1) double)))))
-
-(bind-func xtm_multiplication
-  (lambda (b:double a:Rational)
-    (* b (/ (convert (tref a 0) double) (convert (tref a 1) double)))))
-
-(bind-func xtm_multiplication
-  (lambda (a:Rational b:float)
-    (* b (/ (convert (tref a 0) float) (convert (tref a 1) float)))))
-
-(bind-func xtm_multiplication
-  (lambda (b:float a:Rational)
-    (* b (/ (convert (tref a 0) float) (convert (tref a 1) float)))))
-
-;; rational division
-
-(bind-func xtm_division
-  (lambda (a:Rational b:Rational)
-    (Rational_reduce
-     (Rat (* (tref a 0) (tref b 1))
-          (* (tref a 1) (tref b 0))))))
-
-(bind-func xtm_division
-  (lambda (a:Rational b:i64)
-    (Rat (* (tref a 0) b) (* (tref a 1) 1))))
-
-(bind-func xtm_division
-  (lambda (a:i64 b:Rational)
-    (Rat (* (tref b 1) a) (* (tref b 0) 1))))
-
-(bind-func xtm_division
-  (lambda (a:Rational b:i32)
-    (Rat (* (tref a 0) (i32toi64 b)) (* (tref a 1) 1))))
-
-(bind-func xtm_division
-  (lambda (a:i32 b:Rational)
-    (Rat (* (tref b 1) (i32toi64 a)) (* (tref b 0) 1))))
-
-(bind-func xtm_division
-  (lambda (a:Rational b:i8)
-    (Rat (* (tref a 0) (i8toi64 b)) (* (tref a 1) 1))))
-
-(bind-func xtm_division
-  (lambda (a:i8 b:Rational)
-    (Rat (* (tref b 1) (i8toi64 a)) (* (tref b 0) 1))))
-
-(bind-func xtm_division
-  (lambda (a:Rational b:i1)
-    (Rat (* (tref a 0) (i1toi64 b)) (* (tref a 1) 1))))
-
-(bind-func xtm_division
-  (lambda (a:i1 b:Rational)
-    (Rat (* (tref b 1) (i1toi64 a)) (* (tref b 0) 1))))
-
-(bind-func xtm_division
-  (lambda (a:Rational b:double)
-    (/ (/ (convert (tref a 0) double) (convert (tref a 1) double)) b)))
-
-(bind-func xtm_division
-  (lambda (b:double a:Rational)
-    (/ (/ (convert (tref a 0) double) (convert (tref a 1) double)) b)))
-
-(bind-func xtm_division
-  (lambda (a:Rational b:float)
-    (/ (/ (convert (tref a 0) float) (convert (tref a 1) float)) b)))
-
-(bind-func xtm_division
-  (lambda (b:float a:Rational)
-    (/ (/ (convert (tref a 0) float) (convert (tref a 1) float)) b)))
-
-;; Rational addition
-
-(bind-func xtm_addition
-  (lambda (a:Rational b:Rational)
-    (let ((denom_a (tref a 1))
-          (denom_b (tref b 1)))
-      (Rational_reduce
-       (Rat (+ (* (tref a 0) denom_b) (* (tref b 0) denom_a))
-            (* denom_a denom_b))))))
-
-(bind-func xtm_addition
-  (lambda (a:Rational b:i64)
-    (Rat (+ (tref a 0) (* (tref a 1) b)) (tref a 1))))
-
-(bind-func xtm_addition
-  (lambda (b:i64 a:Rational)
-    (Rat (+ (tref a 0) (* (tref a 1) b)) (tref a 1))))
-
-(bind-func xtm_addition
-  (lambda (a:Rational b:i32)
-    (Rat (+ (tref a 0) (* (tref a 1) (i32toi64 b))) (tref a 1))))
-
-(bind-func xtm_addition
-  (lambda (b:i32 a:Rational)
-    (Rat (+ (tref a 0) (* (tref a 1) (i32toi64 b))) (tref a 1))))
-
-(bind-func xtm_addition
-  (lambda (a:Rational b:i8)
-    (Rat (+ (tref a 0) (* (tref a 1) (i8toi64 b))) (tref a 1))))
-
-(bind-func xtm_addition
-  (lambda (b:i8 a:Rational)
-    (Rat (+ (tref a 0) (* (tref a 1) (i8toi64 b))) (tref a 1))))
-
-(bind-func xtm_addition
-  (lambda (a:Rational b:i1)
-    (Rat (+ (tref a 0) (* (tref a 1) (i1toi64 b))) (tref a 1))))
-
-(bind-func xtm_addition
-  (lambda (b:i1 a:Rational)
-    (Rat (+ (tref a 0) (* (tref a 1) (i1toi64 b))) (tref a 1))))
-
-(bind-func xtm_addition
-  (lambda (a:Rational b:double)
-    (+ (/ (convert (tref a 0) double) (convert (tref a 1) double)) b)))
-
-(bind-func xtm_addition
-  (lambda (b:double a:Rational)
-    (+ (/ (convert (tref a 0) double) (convert (tref a 1) double)) b)))
-
-(bind-func xtm_addition
-  (lambda (a:Rational b:float)
-    (+ (/ (convert (tref a 0) float) (convert (tref a 1) float)) b)))
-
-(bind-func xtm_addition
-  (lambda (b:float a:Rational)
-    (+ (/ (convert (tref a 0) float) (convert (tref a 1) float)) b)))
-
-;; Rational subtraction
-
-(bind-func xtm_subtraction
-  (lambda (a:Rational b:Rational)
-    (let ((denom_a (tref a 1))
-          (denom_b (tref b 1)))
-      (Rational_reduce
-       (Rat (- (* (tref a 0) denom_b) (* (tref b 0) denom_a))
-            (* denom_a denom_b))))))
-
-(bind-func xtm_subtraction
-  (lambda (a:Rational b:i64)
-    (Rat (- (tref a 0) (* (tref a 1) b)) (tref a 1))))
-
-(bind-func xtm_subtraction
-  (lambda (b:i64 a:Rational)
-    (Rat (- (tref a 0) (* (tref a 1) b)) (tref a 1))))
-
-(bind-func xtm_subtraction
-  (lambda (a:Rational b:i32)
-    (Rat (- (tref a 0) (* (tref a 1) (i32toi64 b))) (tref a 1))))
-
-(bind-func xtm_subtraction
-  (lambda (b:i32 a:Rational)
-    (Rat (- (tref a 0) (* (tref a 1) (i32toi64 b))) (tref a 1))))
-
-(bind-func xtm_subtraction
-  (lambda (a:Rational b:i8)
-    (Rat (- (tref a 0) (* (tref a 1) (i8toi64 b))) (tref a 1))))
-
-(bind-func xtm_subtraction
-  (lambda (b:i8 a:Rational)
-    (Rat (- (tref a 0) (* (tref a 1) (i8toi64 b))) (tref a 1))))
-
-(bind-func xtm_subtraction
-  (lambda (a:Rational b:i1)
-    (Rat (- (tref a 0) (* (tref a 1) (i1toi64 b))) (tref a 1))))
-
-(bind-func xtm_subtraction
-  (lambda (b:i1 a:Rational)
-    (Rat (- (tref a 0) (* (tref a 1) (i1toi64 b))) (tref a 1))))
-
-(bind-func xtm_subtraction
-  (lambda (a:Rational b:double)
-    (- (/ (convert (tref a 0) double) (convert (tref a 1) double)) b)))
-
-(bind-func xtm_subtraction
-  (lambda (b:double a:Rational)
-    (- (/ (convert (tref a 0) double) (convert (tref a 1) double)) b)))
-
-(bind-func xtm_subtraction
-  (lambda (a:Rational b:float)
-    (- (/ (convert (tref a 0) float) (convert (tref a 1) float)) b)))
-
-(bind-func xtm_subtraction
-  (lambda (b:float a:Rational)
-    (- (/ (convert (tref a 0) float) (convert (tref a 1) float)) b)))
-
-;; Rational equality
-
-(bind-func xtm_equal
-  (lambda (a:Rational b:Rational)
-    (let ((reduced_a (Rational_reduce a))
-          (reduced_b (Rational_reduce b)))
-      (and (= (tref reduced_a 0)
-              (tref reduced_b 0))
-           (= (tref reduced_a 1)
-              (tref reduced_b 1))))))
-
-(bind-func xtm_equal
-  (lambda (a:Rational b:i64)
-    (xtm_equal:[i1,Rational,Rational]* a (Rat b 1))))
-
-(bind-func xtm_equal
-  (lambda (b:i64 a:Rational)
-    (xtm_equal:[i1,Rational,Rational]* (Rat b 1) a)))
-
-(bind-func xtm_equal
-  (lambda (a:Rational b:i32)
-    (xtm_equal:[i1,Rational,Rational]* a (Rat (i32toi64 b) 1))))
-
-(bind-func xtm_equal
-  (lambda (b:i32 a:Rational)
-    (xtm_equal:[i1,Rational,Rational]* (Rat (i32toi64 b) 1) a)))
-
-(bind-func xtm_equal
-  (lambda (a:Rational b:i8)
-    (xtm_equal:[i1,Rational,Rational]* a (Rat (i8toi64 b) 1))))
-
-(bind-func xtm_equal
-  (lambda (b:i8 a:Rational)
-    (xtm_equal:[i1,Rational,Rational]* (Rat (i8toi64 b) 1) a)))
-
-(bind-func xtm_equal
-  (lambda (a:Rational b:i1)
-    (xtm_equal:[i1,Rational,Rational]* a (Rat (i1toi64 b) 1))))
-
-(bind-func xtm_equal
-  (lambda (b:i1 a:Rational)
-    (xtm_equal:[i1,Rational,Rational]* (Rat (i1toi64 b) 1) a)))
-
-;; Rational inequality
-
-(bind-func xtm_notequal
-  (lambda (a:Rational b:Rational)
-    (let ((reduced_a (Rational_reduce a))
-          (reduced_b (Rational_reduce b)))
-      (or (<> (tref reduced_a 0)
-              (tref reduced_b 0))
-          (<> (tref reduced_a 1)
-              (tref reduced_b 1))))))
-
-(bind-func xtm_notequal
-  (lambda (a:Rational b:i64)
-    (xtm_notequal:[i1,Rational,Rational]* a (Rat b 1))))
-
-(bind-func xtm_notequal
-  (lambda (b:i64 a:Rational)
-    (xtm_notequal:[i1,Rational,Rational]* (Rat b 1) a)))
-
-(bind-func xtm_notequal
-  (lambda (a:Rational b:i32)
-    (xtm_notequal:[i1,Rational,Rational]* a (Rat (i32toi64 b) 1))))
-
-(bind-func xtm_notequal
-  (lambda (b:i32 a:Rational)
-    (xtm_notequal:[i1,Rational,Rational]* (Rat (i32toi64 b) 1) a)))
-
-(bind-func xtm_notequal
-  (lambda (a:Rational b:i8)
-    (xtm_notequal:[i1,Rational,Rational]* a (Rat (i8toi64 b) 1))))
-
-(bind-func xtm_notequal
-  (lambda (b:i8 a:Rational)
-    (xtm_notequal:[i1,Rational,Rational]* (Rat (i8toi64 b) 1) a)))
-
-(bind-func xtm_notequal
-  (lambda (a:Rational b:i1)
-    (xtm_notequal:[i1,Rational,Rational]* a (Rat (i1toi64 b) 1))))
-
-(bind-func xtm_notequal
-  (lambda (b:i1 a:Rational)
-    (xtm_notequal:[i1,Rational,Rational]* (Rat (i1toi64 b) 1) a)))
-
-;; Rational lessthan
-
-(bind-func xtm_lessthan
-  (lambda (a:Rational b:Rational)
-    (< (* (tref a 0) (tref b 1))
-       (* (tref b 0) (tref a 1)))))
-
-(bind-func xtm_lessthan
-  (lambda (a:Rational b:i64)
-    (< (tref a 0) (* b (tref a 1)))))
-
-(bind-func xtm_lessthan
-  (lambda (b:i64 a:Rational)
-    (< (tref a 0) (* b (tref a 1)))))
-
-(bind-func xtm_lessthan
-  (lambda (a:Rational b:i32)
-    (< (tref a 0) (* (i32toi64 b) (tref a 1)))))
-
-(bind-func xtm_lessthan
-  (lambda (b:i32 a:Rational)
-    (< (tref a 0) (* (i32toi64 b) (tref a 1)))))
-
-(bind-func xtm_lessthan
-  (lambda (a:Rational b:i8)
-    (< (tref a 0) (* (i8toi64 b) (tref a 1)))))
-
-(bind-func xtm_lessthan
-  (lambda (b:i8 a:Rational)
-    (< (tref a 0) (* (i8toi64 b) (tref a 1)))))
-
-(bind-func xtm_lessthan
-  (lambda (a:Rational b:i1)
-    (< (tref a 0) (* (i1toi64 b) (tref a 1)))))
-
-(bind-func xtm_lessthan
-  (lambda (b:i1 a:Rational)
-    (< (tref a 0) (* (i1toi64 b) (tref a 1)))))
-
-;; Rational greaterthan
-
-(bind-func xtm_greaterthan
-  (lambda (a:Rational b:Rational)
-    (> (* (tref a 0) (tref b 1))
-       (* (tref b 0) (tref a 1)))))
-
-(bind-func xtm_greaterthan
-  (lambda (a:Rational b:i64)
-    (> (tref a 0) (* b (tref a 1)))))
-
-(bind-func xtm_greaterthan
-  (lambda (b:i64 a:Rational)
-    (> (tref a 0) (* b (tref a 1)))))
-
-(bind-func xtm_greaterthan
-  (lambda (a:Rational b:i32)
-    (> (tref a 0) (* (i32toi64 b) (tref a 1)))))
-
-(bind-func xtm_greaterthan
-  (lambda (b:i32 a:Rational)
-    (> (tref a 0) (* (i32toi64 b) (tref a 1)))))
-
-(bind-func xtm_greaterthan
-  (lambda (a:Rational b:i8)
-    (> (tref a 0) (* (i8toi64 b) (tref a 1)))))
-
-(bind-func xtm_greaterthan
-  (lambda (b:i8 a:Rational)
-    (> (tref a 0) (* (i8toi64 b) (tref a 1)))))
-
-(bind-func xtm_greaterthan
-  (lambda (a:Rational b:i1)
-    (> (tref a 0) (* (i1toi64 b) (tref a 1)))))
-
-(bind-func xtm_greaterthan
-  (lambda (b:i1 a:Rational)
-    (> (tref a 0) (* (i1toi64 b) (tref a 1)))))
-
-;; rational modulo
-
-(bind-func xtm_modulo
-  (lambda (a:Rational b:Rational)
-    (let ((c (/ a b))
-          (n (Rat (% (tref c 0) (tref c 1)) (tref c 1))))
-      (* b n))))
-
-(bind-func xtm_modulo
-  (lambda (a:Rational b:i64)
-    (xtm_modulo:[Rational,Rational,Rational]* a (Rat b 1))))
-
-(bind-func xtm_modulo
-  (lambda (a:i64 b:Rational)
-    (xtm_modulo:[Rational,Rational,Rational]* (Rat a 1) b)))
-
-(bind-func xtm_modulo
-  (lambda (a:Rational b:i32)
-    (xtm_modulo:[Rational,Rational,Rational]* a (Rat (i32toi64 b) 1))))
-
-(bind-func xtm_modulo
-  (lambda (a:i32 b:Rational)
-    (xtm_modulo:[Rational,Rational,Rational]* (Rat (i32toi64 a) 1) b)))
-
-(bind-func xtm_modulo
-  (lambda (a:Rational b:i8)
-    (xtm_modulo:[Rational,Rational,Rational]* a (Rat (i8toi64 b) 1))))
-
-(bind-func xtm_modulo
-  (lambda (a:i8 b:Rational)
-    (xtm_modulo:[Rational,Rational,Rational]* (Rat (i8toi64 a) 1) b)))
+;; calculate the minimum bouning sphere
+;; for a buf full of 'n' 3d vertices
+;; stride will usually ee either 3 (if already 3d) or 4 if (4d)
+;;
+;; c and r are a |3,float|* and a |1,float|*
+;; they are the centre and radius of the returned bounding sphere
+;;
+;; bouncing bouble algorithm - Tian Bo
+(bind-func vsphere
+  (lambda (buf:float* n:i64 stride:i64 c:float* r:float*)
+    (let ((centre:float* buf) ;; start guess with 1st vertex
+          (radius 0.0001:f)
+          (pos:float* null)
+          (diff:float* (salloc 3))
+          (tmp:float* (salloc 3))
+          (len:float 0.0)
+          (alpha:float 0.0)
+          (alphasq:float 0.0)
+          (i 0) (j 0))
+      (dotimes (i 2)
+        (dotimes (j n)
+          (set! pos (pref-ptr buf (* stride j)))
+          (vvsub pos centre 3 diff)
+          (set! len (vmag diff 3))
+          (if (> len radius)
+              (begin
+                (set! alpha (/ len radius))
+                (set! alphasq (* alpha alpha))
+                (set! radius (* 0.5:f (+ alpha (/ 1.0 alpha)) radius))
+                ;; (set! centre (+ (* 0.5:f (+ 1 (/ 1.0 alphasq)) centre)
+                ;;                 (* (- 1 (/ 1.0 alphasq)) pos)))))))
+                (vsmul centre (* 0.5 (+ 1.0 (/ 1.0 alphasq))) 3 centre)
+                (vsmul pos (- 1.0 (/ 1.0 alphasq)) 3 tmp)
+                (vvsum centre tmp 3 centre)))))
+      (dotimes (j n)
+        (set! pos (pref-ptr buf (* stride j)))
+        (vvsub pos centre 3 diff)
+        (set! len (vmag diff 3))
+        (if (> len radius)
+            (begin
+              (set! radius (/ (+ radius len) 2.0))
+              ;; (set! centre (+ centre (/ (- len radius) (* len diff)))))))
+              (vsmul diff len 3 diff)
+              (vsdiv diff (- len radius) 3 diff)
+              (vvsum centre diff 3 centre))))              
+      (vcopy centre 3 c) ;; set c
+      (pset! r 0 radius) ;; set r
+      void)))
 
 ;;;;;;;;;; COMPLEX NUMBERS ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
@@ -1808,7 +1390,7 @@ column-major (the same as OpenGL)
 
 (bind-func Complex_phase
   (lambda (a:Complexd)
-    (atan (/ (tref a 1) (tref a 0)))))
+    (atan2 (tref a 1) (tref a 0))))
 
 (bind-func Complex_conj
   (lambda (a:Complexd)
@@ -1819,18 +1401,19 @@ column-major (the same as OpenGL)
   (lambda (a:Complexd)
     (Cpxd (sqrt (+ (* (tref a 0) (tref a 0))
                    (* (tref a 1) (tref a 1))))
-          (atan (/ (tref a 1) (tref a 0))))))
+          (atan2 (tref a 1) (tref a 0)))))
 
 (bind-func cart_to_pol
   "transform a whole buffer cart->pol in-place"
   (lambda (a:Complexd* n:i64)
-    (doloop (i n)
-      (tset! (pref-ptr a i) 0
-             (sqrt (+ (* (tref a 0) (tref a 0))
-                      (* (tref a 1) (tref a 1)))))
-      (tset! (pref-ptr a i) 1
-             (atan (/ (tref a 1) (tref a 0)))))
-    void))
+    (let ((temp:double 0.0))
+      (doloop (i n)
+        (set! temp (sqrt (+ (* (tref (pref a i) 0) (tref (pref a i) 0))
+                            (* (tref (pref a i) 1) (tref (pref a i) 1)))))
+        (tset! (pref-ptr a i) 1
+               (atan2 (tref (pref a i) 1) (tref (pref a i) 0)))
+        (tset! (pref-ptr a i) 0 temp))
+      void)))
 
 (bind-func pol_to_cart
   (lambda (a:Complexd)
@@ -1840,13 +1423,13 @@ column-major (the same as OpenGL)
 (bind-func pol_to_cart
   "transform a whole buffer pol->cart in-place"
   (lambda (a:Complexd* n:i64)
-    (doloop (i n)
-      (tset! (pref-ptr a i) 0
-             (* (tref a 0) (cos (tref a 1))))
-      (tset! (pref-ptr a i) 1
-             (* (tref a 0) (sin (tref a 1)))))
-    void))
-
+    (let ((temp:double 0.0))
+      (doloop (i n)
+        (set! temp (* (tref (pref a i) 0) (cos (tref (pref a i) 1))))
+        (tset! (pref-ptr a i) 1
+               (* (tref (pref a i) 0) (sin (tref (pref a i) 1))))
+        (tset! (pref-ptr a i) 0 temp))
+      void)))
 
 ;; Complexf (float versions)
 
@@ -1896,7 +1479,6 @@ column-major (the same as OpenGL)
                    (ftod (tref c 0))
                    (ftod (tref c 1))))
       (Str str))))
-
 
 (bind-func xtm_addition
   (lambda (a:Complexf b:Complexf)
@@ -2072,7 +1654,6 @@ column-major (the same as OpenGL)
         (tset! (pref-ptr c i) 1 (/ l k)))
       void)))
 
-
 (bind-func Complex_mag
   (lambda (a:Complexf)
     (sqrt (+ (* (tref a 0) (tref a 0))
@@ -2080,7 +1661,7 @@ column-major (the same as OpenGL)
 
 (bind-func Complex_phase
   (lambda (a:Complexf)
-    (atan (/ (tref a 1) (tref a 0)))))
+    (atan2 (tref a 1) (tref a 0))))
 
 (bind-func Complex_conj
   (lambda (a:Complexf)
@@ -2091,19 +1672,19 @@ column-major (the same as OpenGL)
   (lambda (a:Complexf)
     (Cpxf (sqrt (+ (* (tref a 0) (tref a 0))
                    (* (tref a 1) (tref a 1))))
-          (atan (/ (tref a 1) (tref a 0))))))
+          (atan2 (tref a 1) (tref a 0)))))
 
 (bind-func cart_to_pol
   "transform a whole buffer cart->pol in-place"
   (lambda (a:Complexf* n:i64)
-    (doloop (i n)
-      (tset! (pref-ptr a i) 0
-             (sqrt (+ (* (tref a 0) (tref a 0))
-                      (* (tref a 1) (tref a 1)))))
-      (tset! (pref-ptr a i) 1
-             (atan (/ (tref a 1) (tref a 0)))))
-    void))
-
+    (let ((temp:float 0.0))
+      (doloop (i n)
+        (set! temp (sqrt (+ (* (tref (pref a i) 0) (tref (pref a i) 0))
+                            (* (tref (pref a i) 1) (tref (pref a i) 1)))))
+        (tset! (pref-ptr a i) 1
+               (atan2 (tref (pref a i) 1) (tref (pref a i) 0)))
+        (tset! (pref-ptr a i) 0 temp))
+      void)))
 
 (bind-func pol_to_cart
   (lambda (a:Complexf)
@@ -2113,12 +1694,13 @@ column-major (the same as OpenGL)
 (bind-func pol_to_cart
   "transform a whole buffer pol->cart in-place"
   (lambda (a:Complexf* n:i64)
-    (doloop (i n)
-      (tset! (pref-ptr a i) 0
-             (* (tref a 0) (cos (tref a 1))))
-      (tset! (pref-ptr a i) 1
-             (* (tref a 0) (sin (tref a 1)))))
-    void))
+    (let ((temp:float 0.0))
+      (doloop (i n)
+        (set! temp (* (tref (pref a i) 0) (cos (tref (pref a i) 1))))
+        (tset! (pref-ptr a i) 1
+               (* (tref (pref a i) 0) (sin (tref (pref a i) 1))))
+        (tset! (pref-ptr a i) 0 temp))
+      void)))
 
 ;; "bufferize" whole buffers of real & complex values (take two real
 ;; buffers with real & imaginary components, fill buffer of Complex
@@ -2420,14 +2002,15 @@ column-major (the same as OpenGL)
 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(bind-func diff
+;; numeric differentation
+(bind-func ndiff
   "numeric differentiation - central diff"
   (lambda (f:[double,double]* x)
     (/ (- (f (+ x (/ 1e-5 2.0)))
           (f (- x (/ 1e-5 2.0))))
        1e-5)))
 
-(bind-func diff
+(bind-func ndiff
   "numeric differentiation - central diff"
   (lambda (f:[double,double]* x dx)
     (/ (- (f (+ x (/ dx 2.0)))
@@ -2435,14 +2018,14 @@ column-major (the same as OpenGL)
        dx)))
 
 ;; same as above (i.e. central)
-(bind-func differentiate
+(bind-func ndifferentiate
   "numeric differentiation - central diff"
   (lambda (f:[double,double]* x)
     (/ (- (f (+ x (/ 1e-5 2.0)))
           (f (- x (/ 1e-5 2.0))))
        1e-5)))
 
-(bind-func diff_extrapolated
+(bind-func ndiff_extrapolated
   "numeric differentiation - extrapolated diff"
   (lambda (f:[double,double]* x dx)
     (/ (- (* 8.0 (- (f (+ x (/ dx 4.0)))
@@ -2451,21 +2034,21 @@ column-major (the same as OpenGL)
              (f (- x (/ dx 2.0)))))
        (* 3.0 dx))))
 
-(bind-func diff2
+(bind-func ndiff2
   "numeric differentiation (2nd deriv) - central diff"
   (lambda (f:[double,double]* x)
     (/ (- (- (f (+ x 1e-5)) (f x))
           (- (f x) (f (- x 1e-5))))
        (* 1e-5 1e-5))))
 
-(bind-func diff2
+(bind-func ndiff2
   "numeric differentiation (2nd deriv) - central diff"
   (lambda (f:[double,double]* x dx)
     (/ (- (- (f (+ x dx)) (f x))
           (- (f x) (f (- x dx))))
        (* dx dx))))
 
-(bind-func integrate
+(bind-func nintegrate
   "integrate using Simpsons rule - N must be odd"
   (lambda (f:[double,double]* xmin xmax N)
     (let ((sumeven:double 0.0)
@@ -2486,10 +2069,10 @@ column-major (the same as OpenGL)
             (f xmin) (f xmax))
          (/ interval 3.0)))))
 
-(bind-func integrate
+(bind-func nintegrate
   "integrate using Simpsons rule - N must be odd"
   (lambda (f:[double,double]* xmin xmax)
-    (integrate:[double,[double,double]*,double,double,i64]* f xmin xmax 501)))
+    (nintegrate:[double,[double,double]*,double,double,i64]* f xmin xmax 501)))
 
 
 ;; end libs/core/math.xtm

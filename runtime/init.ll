@@ -58,6 +58,8 @@ declare double @audio_clock_now()
 
 declare i32 @register_for_window_events()
 
+declare void @xtm_set_main_callback(i8*)
+
 ;; swap stuff
 declare i64 @swap64f(double)
 declare double @unswap64f(i64)
@@ -87,7 +89,6 @@ declare i32 @mutex_trylock(i8*)
 declare void @llvm_runtime_error(i64,i8*) nounwind
 declare i1 @llvm_zone_copy_ptr(i8*, i8*) nounwind
 declare i64 @llvm_zone_ptr_size(i8*) nounwind
-declare i8* @llvm_stack_alloc(i64) nounwind
 declare i1 @llvm_ptr_in_current_zone(i8*) nounwind
 declare void @llvm_print_pointer(i8*)
 declare void @llvm_print_i32(i32)
@@ -142,7 +143,6 @@ declare i32 @i32value(i8*)
 declare i16 @i16value(i8*)
 declare i8 @i8value(i8*)
 declare i1 @i1value(i8*)
-declare i32 @is_integer(i8*)
 declare double @r64value(i8*)
 declare float @r32value(i8*)
 declare i32 @is_real(i8*)
@@ -156,22 +156,22 @@ declare i8* @list_ref(i8*,i32,i8*)
 
 declare i32 @rand()
 
-declare double @llvm_tan(double)
-declare double @llvm_cosh(double)
-declare double @llvm_tanh(double)
-declare double @llvm_sinh(double)
-declare double @llvm_asin(double)
-declare double @llvm_atan(double)
-declare double @llvm_atan2(double,double)
 
+declare double @tan(double)
 declare float @tanf(float)
+declare double @cosh(double)
 declare float @coshf(float)
+declare double @tanh(double)
 declare float @tanhf(float)
+declare double @sinh(double)
 declare float @sinhf(float)
 declare double @acos(double)
 declare float @acosf(float)
+declare double @asin(double)
 declare float @asinf(float)
+declare double @atan(double)
 declare float @atanf(float)
+declare double @atan2(double, double)
 declare float @atan2f(float, float)
 
 ;; c99 math.h stuff
@@ -441,14 +441,6 @@ declare void @longjmp(i8*,i32)
 declare i32 @setjmp(i8*)
 declare i8* @dlsym(i8*, i8*)
 
-;; R5RS equivs
-declare i8* @llvm_substring(i8*,i32,i32)
-declare i8* @llvm_string_cat(i8*,i8*)
-declare i8* @llvm_string_copy(i8*)
-declare i32 @llvm_string_eq(i8*,i8*)
-declare void @llvm_string_set(i8*, i32, i8)
-declare i8 @llvm_string_ref(i8*, i32)
-
 declare double @imp_randd()
 declare float @imp_randf()
 declare i64 @imp_rand1_i64(i64)
@@ -562,10 +554,6 @@ entry:
   %e = load i8*, i8** %ePtr
   ret i8* %e
 }
-
-declare i32 @llvm_frames()
-declare i32 @llvm_channels()
-declare i32 @llvm_in_channels()
 
 declare i8* @memset(i8* %dest, i32 %val, i64 %len)
 
